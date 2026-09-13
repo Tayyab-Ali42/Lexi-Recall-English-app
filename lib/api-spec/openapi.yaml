@@ -10,6 +10,12 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: vocabulary
+    description: Saved English vocabulary
+  - name: review
+    description: Spaced-repetition review sessions
+  - name: ai
+    description: AI-powered vocabulary enrichment
 paths:
   /healthz:
     get:
@@ -24,7 +30,177 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /vocabulary:
+    get:
+      operationId: listVocabulary
+      tags: [vocabulary]
+      summary: List saved vocabulary
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/VocabularyType"
+      responses:
+        "200":
+          description: Saved vocabulary
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VocabularyItem"
+    post:
+      operationId: createVocabulary
+      tags: [vocabulary]
+      summary: Save vocabulary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VocabularyInput"
+      responses:
+        "201":
+          description: Saved vocabulary item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocabularyItem"
+  /vocabulary/{id}:
+    get:
+      operationId: getVocabulary
+      tags: [vocabulary]
+      summary: Get vocabulary item
+      parameters:
+        - $ref: "#/components/parameters/VocabularyId"
+      responses:
+        "200":
+          description: Vocabulary item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocabularyItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateVocabulary
+      tags: [vocabulary]
+      summary: Update vocabulary item
+      parameters:
+        - $ref: "#/components/parameters/VocabularyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VocabularyUpdate"
+      responses:
+        "200":
+          description: Updated vocabulary item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocabularyItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteVocabulary
+      tags: [vocabulary]
+      summary: Delete vocabulary item
+      parameters:
+        - $ref: "#/components/parameters/VocabularyId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [vocabulary]
+      summary: Get learning dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /review/next:
+    get:
+      operationId: getNextReview
+      tags: [review]
+      summary: Get the next due item
+      responses:
+        "200":
+          description: Next review item or null when the queue is empty
+          content:
+            application/json:
+              schema:
+                type: ["object", "null"]
+                allOf:
+                  - $ref: "#/components/schemas/ReviewCard"
+  /review/{id}:
+    post:
+      operationId: submitReview
+      tags: [review]
+      summary: Record a spaced-repetition review
+      parameters:
+        - $ref: "#/components/parameters/VocabularyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "200":
+          description: Updated review card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VocabularyItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /ai/enrich:
+    post:
+      operationId: enrichVocabulary
+      tags: [ai]
+      summary: Generate an AI explanation for vocabulary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrichInput"
+      responses:
+        "200":
+          description: AI-generated vocabulary explanation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Enrichment"
 components:
+  parameters:
+    VocabularyId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    NotFound:
+      description: Item not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +209,193 @@ components:
           type: string
       required:
         - status
+    VocabularyType:
+      type: string
+      enum: [word, phrase, idiom, phrasal_verb]
+    ReviewRating:
+      type: string
+      enum: [again, hard, good, easy]
+    VocabularyItem:
+      type: object
+      required:
+        - id
+        - term
+        - type
+        - meaning
+        - example
+        - tags
+        - intervalDays
+        - easeFactor
+        - repetitions
+        - dueAt
+        - createdAt
+        - source
+      properties:
+        id:
+          type: string
+        term:
+          type: string
+        type:
+          $ref: "#/components/schemas/VocabularyType"
+        meaning:
+          type: string
+        partOfSpeech:
+          type: ["string", "null"]
+        pronunciation:
+          type: ["string", "null"]
+        example:
+          type: string
+        translation:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+        intervalDays:
+          type: number
+        easeFactor:
+          type: number
+        repetitions:
+          type: integer
+        dueAt:
+          type: string
+          format: date-time
+        lastReviewedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+          enum: [manual, ai]
+    VocabularyInput:
+      type: object
+      required: [term, type, meaning, example]
+      properties:
+        term:
+          type: string
+          minLength: 1
+        type:
+          $ref: "#/components/schemas/VocabularyType"
+        meaning:
+          type: string
+          minLength: 1
+        partOfSpeech:
+          type: ["string", "null"]
+        pronunciation:
+          type: ["string", "null"]
+        example:
+          type: string
+          minLength: 1
+        translation:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+        source:
+          type: string
+          enum: [manual, ai]
+          default: manual
+    VocabularyUpdate:
+      type: object
+      properties:
+        term:
+          type: string
+          minLength: 1
+        type:
+          $ref: "#/components/schemas/VocabularyType"
+        meaning:
+          type: string
+          minLength: 1
+        partOfSpeech:
+          type: ["string", "null"]
+        pronunciation:
+          type: ["string", "null"]
+        example:
+          type: string
+          minLength: 1
+        translation:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+    ReviewCard:
+      allOf:
+        - $ref: "#/components/schemas/VocabularyItem"
+    ReviewInput:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          $ref: "#/components/schemas/ReviewRating"
+    DashboardSummary:
+      type: object
+      required: [total, dueToday, mastered, learning, streak, reviewedToday, typeCounts]
+      properties:
+        total:
+          type: integer
+        dueToday:
+          type: integer
+        mastered:
+          type: integer
+        learning:
+          type: integer
+        streak:
+          type: integer
+        reviewedToday:
+          type: integer
+        typeCounts:
+          type: object
+          additionalProperties:
+            type: integer
+    EnrichInput:
+      type: object
+      required: [term, type]
+      properties:
+        term:
+          type: string
+          minLength: 1
+        type:
+          $ref: "#/components/schemas/VocabularyType"
+        context:
+          type: ["string", "null"]
+    Enrichment:
+      type: object
+      required: [term, type, meaning, example, tags]
+      properties:
+        term:
+          type: string
+        type:
+          $ref: "#/components/schemas/VocabularyType"
+        meaning:
+          type: string
+        partOfSpeech:
+          type: ["string", "null"]
+        pronunciation:
+          type: ["string", "null"]
+        example:
+          type: string
+        translation:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+        memoryHook:
+          type: ["string", "null"]
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
 

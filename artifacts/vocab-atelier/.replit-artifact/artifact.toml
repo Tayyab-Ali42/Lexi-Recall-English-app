@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Vocab Atelier"
+description = "A personal English vocabulary studio for saving words, phrases, idioms, and phrasal verbs, enriching them with AI explanations, and reviewing them with evidence-based spaced repetition."
+version = "1.0.0"
+id = "artifacts/vocab-atelier"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21501
+
+[services.development]
+run = "pnpm --filter @workspace/vocab-atelier run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vocab-atelier", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/vocab-atelier/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21501"
+BASE_PATH = "/"

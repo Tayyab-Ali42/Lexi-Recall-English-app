@@ -1,0 +1,1 @@
+- [Generated client DOM types](generated-client-dom-types.md) — Generated fetch clients may need `dom.iterable` in their library TypeScript config for `Headers.entries()`.
