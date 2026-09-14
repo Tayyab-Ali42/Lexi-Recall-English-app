@@ -50,6 +50,8 @@ export interface VocabularyItem {
   /** @nullable */
   translation?: string | null;
   /** @nullable */
+  urduMeaning?: string | null;
+  /** @nullable */
   notes?: string | null;
   tags: string[];
   intervalDays: number;
@@ -85,6 +87,8 @@ export interface VocabularyInput {
   /** @nullable */
   translation?: string | null;
   /** @nullable */
+  urduMeaning?: string | null;
+  /** @nullable */
   notes?: string | null;
   tags?: string[];
   source?: VocabularyInputSource;
@@ -104,6 +108,8 @@ export interface VocabularyUpdate {
   example?: string;
   /** @nullable */
   translation?: string | null;
+  /** @nullable */
+  urduMeaning?: string | null;
   /** @nullable */
   notes?: string | null;
   tags?: string[];
@@ -146,6 +152,8 @@ export interface Enrichment {
   example: string;
   /** @nullable */
   translation?: string | null;
+  /** @nullable */
+  urduMeaning?: string | null;
   tags: string[];
   /** @nullable */
   memoryHook?: string | null;

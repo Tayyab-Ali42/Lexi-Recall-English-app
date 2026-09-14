@@ -247,6 +247,8 @@ components:
           type: string
         translation:
           type: ["string", "null"]
+        urduMeaning:
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
         tags:
@@ -292,6 +294,8 @@ components:
           minLength: 1
         translation:
           type: ["string", "null"]
+        urduMeaning:
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
         tags:
@@ -321,6 +325,8 @@ components:
           type: string
           minLength: 1
         translation:
+          type: ["string", "null"]
+        urduMeaning:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
@@ -385,6 +391,8 @@ components:
         example:
           type: string
         translation:
+          type: ["string", "null"]
+        urduMeaning:
           type: ["string", "null"]
         tags:
           type: array

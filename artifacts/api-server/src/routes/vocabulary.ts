@@ -36,6 +36,7 @@ router.get("/vocabulary", async (req, res): Promise<void> => {
       or(
         ilike(vocabularyTable.term, search),
         ilike(vocabularyTable.meaning, search),
+        ilike(vocabularyTable.urduMeaning, search),
         ilike(vocabularyTable.example, search),
       ),
     );

@@ -18,6 +18,8 @@ export interface Enrichment {
   example: string;
   /** @nullable */
   translation?: string | null;
+  /** @nullable */
+  urduMeaning?: string | null;
   tags: string[];
   /** @nullable */
   memoryHook?: string | null;

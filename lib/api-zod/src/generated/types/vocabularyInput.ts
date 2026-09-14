@@ -23,6 +23,8 @@ export interface VocabularyInput {
   /** @nullable */
   translation?: string | null;
   /** @nullable */
+  urduMeaning?: string | null;
+  /** @nullable */
   notes?: string | null;
   tags?: string[];
   source?: VocabularyInputSource;

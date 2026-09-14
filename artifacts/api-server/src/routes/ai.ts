@@ -37,7 +37,7 @@ router.post("/ai/enrich", async (req, res): Promise<void> => {
           {
             role: "system",
             content:
-              "You are an expert English teacher. Return only valid JSON with keys: term, type, meaning, partOfSpeech, pronunciation, example, translation, tags, memoryHook. Make the explanation useful to a language learner, concise, natural, and specific. pronunciation should use a simple IPA-style spelling when relevant. tags should be 2-4 lowercase study labels. memoryHook can be null.",
+              "You are an expert English teacher. Return only valid JSON with keys: term, type, meaning, partOfSpeech, pronunciation, example, translation, urduMeaning, tags, memoryHook. Make the explanation useful to a language learner, concise, natural, and specific. pronunciation should use a simple IPA-style spelling when relevant. translation can be null. urduMeaning should be a natural Urdu meaning written in Urdu script, or null when unavailable. tags should be 2-4 lowercase study labels. memoryHook can be null.",
           },
           {
             role: "user",

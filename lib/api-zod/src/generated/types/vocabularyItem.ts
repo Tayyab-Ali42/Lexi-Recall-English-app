@@ -21,6 +21,8 @@ export interface VocabularyItem {
   /** @nullable */
   translation?: string | null;
   /** @nullable */
+  urduMeaning?: string | null;
+  /** @nullable */
   notes?: string | null;
   tags: string[];
   intervalDays: number;

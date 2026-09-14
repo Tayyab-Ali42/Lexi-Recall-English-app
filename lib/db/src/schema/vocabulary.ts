@@ -17,6 +17,7 @@ export const vocabularyTable = pgTable("vocabulary", {
   pronunciation: text("pronunciation"),
   example: text("example").notNull(),
   translation: text("translation"),
+  urduMeaning: text("urdu_meaning"),
   notes: text("notes"),
   tags: text("tags").array().notNull().default([]),
   intervalDays: doublePrecision("interval_days").notNull().default(0),
