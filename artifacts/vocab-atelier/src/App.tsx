@@ -195,15 +195,15 @@ function Dashboard() {
         </div>
       </section>
       <section className="mt-8 fade-in delay-3">
-        <div className="mb-4 flex items-center justify-between"><div><p className="eyebrow">Recently added</p><h2 className="serif mt-2 text-2xl">Fresh on the shelf</h2></div><Link href="/library" className="button-quiet" data-testid="link-view-library">View library <ChevronRight size={14} /></Link></div>
-        {list.isLoading ? <LoadingState rows={2} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : recent.length === 0 ? <EmptyState title="Your shelf is ready." copy="Save the first word that makes you pause." action={<Link href="/library" className="button-primary" data-testid="link-add-first-word"><Plus size={15} /> Add your first word</Link>} /> : <div className="grid gap-3 md:grid-cols-2">{recent.map((item, index) => <VocabPreview key={item.id} item={item} index={index} />)}</div>}
+         <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="eyebrow">Recently added</p><h2 className="serif mt-2 text-2xl">Fresh on the shelf</h2></div><Link href="/library" className="button-quiet shrink-0" data-testid="link-view-library">View library <ChevronRight size={14} /></Link></div>
+         {list.isLoading ? <LoadingState rows={2} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : recent.length === 0 ? <EmptyState title="Your shelf is ready." copy="Save the first word that makes you pause." action={<Link href="/library" className="button-primary" data-testid="link-add-first-word"><Plus size={15} /> Add your first word</Link>} /> : <div className="grid min-w-0 gap-3 md:grid-cols-2">{recent.map((item, index) => <VocabPreview key={item.id} item={item} index={index} />)}</div>}
       </section>
     </>}
   </div>;
 }
 
 function VocabPreview({ item, index = 0 }: { item: VocabularyItem; index?: number }) {
-  return <Link href="/library" className={`card-surface hover-lift flex items-center gap-4 p-4 fade-in delay-${Math.min(index + 1, 4)}`} data-testid={`card-recent-${item.id}`}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold" style={{ background: `${typeColors[item.type]}18`, color: typeColors[item.type] }}>{item.term.slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{item.term}</span><span className="tag">{typeLabels[item.type]}</span></span><span className="mt-1 block truncate text-xs text-[hsl(var(--muted-foreground))]">{item.meaning}</span></span><ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]" /></Link>;
+  return <Link href="/library" className={`card-surface hover-lift flex min-w-0 items-center gap-3 p-4 fade-in delay-${Math.min(index + 1, 4)}`} data-testid={`card-recent-${item.id}`}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold" style={{ background: `${typeColors[item.type]}18`, color: typeColors[item.type] }}>{item.term.slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1 overflow-hidden"><span className="flex min-w-0 items-center gap-2"><span className="min-w-0 truncate text-sm font-semibold">{item.term}</span><span className="tag shrink-0">{typeLabels[item.type]}</span></span><span className="mt-1 block truncate text-xs text-[hsl(var(--muted-foreground))]">{item.meaning}</span></span><ChevronRight size={16} className="shrink-0 text-[hsl(var(--muted-foreground))]" /></Link>;
 }
 
 function Library() {
