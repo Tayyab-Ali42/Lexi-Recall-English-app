@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 import {
   getGetDashboardQueryKey,
-  getGetNextReviewQueryKey,
   getGetVocabularyQueryKey,
   getListVocabularyQueryKey,
   type VocabularyItem,
@@ -35,7 +34,6 @@ import {
   useDeleteVocabulary,
   useEnrichVocabulary,
   useGetDashboard,
-  useGetNextReview,
   useGetVocabulary,
   useListVocabulary,
   useSubmitReview,
@@ -277,24 +275,172 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
   </div></div>;
 }
 
+type PracticeMode = 'recall' | 'meaning' | 'urdu' | 'cloze' | 'word' | 'spelling' | 'choice' | 'match' | 'sentence' | 'synonym' | 'correction';
+
+const practiceModes: Array<{ value: PracticeMode; label: string; description: string }> = [
+  { value: 'recall', label: 'Recall and reveal', description: 'Think first, then reveal the answer.' },
+  { value: 'meaning', label: 'Write the meaning', description: 'Explain the word in English.' },
+  { value: 'urdu', label: 'Write the Urdu meaning', description: 'Recall the Urdu meaning in Urdu script.' },
+  { value: 'cloze', label: 'Fill in the blank', description: 'Complete the example sentence.' },
+  { value: 'word', label: 'Write the word', description: 'See the meaning and recall the vocabulary.' },
+  { value: 'spelling', label: 'Spelling check', description: 'Type the exact spelling from the clue.' },
+  { value: 'choice', label: 'Multiple choice', description: 'Choose the correct English meaning.' },
+  { value: 'match', label: 'Match the meaning', description: 'Match the word with its meaning.' },
+  { value: 'sentence', label: 'Use it in a sentence', description: 'Write your own natural example.' },
+  { value: 'synonym', label: 'Synonym or antonym', description: 'Write a related or opposite word.' },
+  { value: 'correction', label: 'Correct the sentence', description: 'Rewrite the example using the word correctly.' },
+];
+
+function normalizeReviewAnswer(value: string) {
+  return value.toLocaleLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/gi, ' ').trim();
+}
+
+function getClozeSentence(card: VocabularyItem) {
+  const escapedTerm = card.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sentence = card.example.replace(new RegExp(escapedTerm, 'i'), '_____');
+  return sentence === card.example ? `Use “${card.term}” to complete your own sentence.` : sentence;
+}
+
+function getReviewPrompt(mode: PracticeMode, card: VocabularyItem) {
+  switch (mode) {
+    case 'meaning':
+      return `What does “${card.term}” mean in English?`;
+    case 'urdu':
+      return `What is the Urdu meaning of “${card.term}”?`;
+    case 'cloze':
+      return getClozeSentence(card);
+    case 'word':
+      return `Write the vocabulary item for this meaning: ${card.meaning}`;
+    case 'spelling':
+      return `Type the exact spelling for: ${card.meaning}`;
+    case 'choice':
+    case 'match':
+      return `Choose the meaning that matches “${card.term}”.`;
+    case 'sentence':
+      return `Write your own sentence using “${card.term}”.`;
+    case 'synonym':
+      return `Write a synonym or antonym for “${card.term}”.`;
+    case 'correction':
+      return `Rewrite this example in your own correct sentence: “${card.example}”`;
+    default:
+      return 'What does this mean?';
+  }
+}
+
+function getObjectiveAnswer(mode: PracticeMode, card: VocabularyItem) {
+  if (mode === 'word' || mode === 'spelling' || mode === 'cloze') return card.term;
+  if (mode === 'choice' || mode === 'match') return card.meaning;
+  return null;
+}
+
+function ReviewAnswerDetails({ card }: { card: VocabularyItem }) {
+  return <div className="mt-5 space-y-4 text-left">
+    <div><p className="eyebrow mb-2">English meaning</p><p className="serif text-2xl leading-snug" data-testid="text-review-meaning">{card.meaning}</p></div>
+    {card.urduMeaning && <div className="rounded-xl bg-[hsl(var(--secondary)/.55)] px-4 py-3 text-right" dir="rtl" lang="ur"><p className="eyebrow mb-2 text-left" dir="ltr">Urdu meaning</p><p className="text-lg leading-relaxed" data-testid="text-review-urdu-meaning">{card.urduMeaning}</p></div>}
+    {card.translation && <p className="text-sm text-[hsl(var(--muted-foreground))]">{card.translation}</p>}
+    <div className="rounded-xl bg-[hsl(var(--secondary)/.55)] p-4"><p className="eyebrow mb-2">In context</p><p className="text-sm italic leading-relaxed">“{card.example}”</p></div>
+    {card.notes && <p className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Note: {card.notes}</p>}
+  </div>;
+}
+
 function Review() {
-  const next = useGetNextReview();
+  const list = useListVocabulary();
   const submit = useSubmitReview();
   const qc = useQueryClient();
-  const [revealed, setRevealed] = useState(false);
+  const [mode, setMode] = useState<PracticeMode>('recall');
+  const [practiceCount, setPracticeCount] = useState('5');
+  const [sessionCards, setSessionCards] = useState<VocabularyItem[]>([]);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const [cardIndex, setCardIndex] = useState(0);
+  const [answer, setAnswer] = useState('');
+  const [selectedOption, setSelectedOption] = useState('');
+  const [answered, setAnswered] = useState(false);
+  const [answerCorrect, setAnswerCorrect] = useState<boolean | null>(null);
   const [lastRating, setLastRating] = useState<ReviewRatingType | null>(null);
-  const card = next.data;
-  useEffect(() => { setRevealed(false); setLastRating(null); }, [card?.id]);
-  const rate = (rating: ReviewRatingType) => { if (!card) return; setLastRating(rating); submit.mutate({ id: card.id, data: { rating } }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetNextReviewQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); } }); };
+  const [saveError, setSaveError] = useState('');
+  const dueCards = useMemo(() => (list.data ?? []).filter(item => new Date(item.dueAt).getTime() <= Date.now()).sort((a, b) => +new Date(a.dueAt) - +new Date(b.dueAt)), [list.data]);
+  const card = sessionCards[cardIndex];
+  const choices = useMemo(() => {
+    if (!card || (mode !== 'choice' && mode !== 'match')) return [];
+    return Array.from(new Set([card.meaning, ...sessionCards.filter(item => item.id !== card.id).map(item => item.meaning)])).slice(0, 4).sort((a, b) => a.localeCompare(b));
+  }, [card, mode, sessionCards]);
   const ratingCopy: Record<string, { label: string; hint: string }> = { again: { label: 'Again', hint: 'Reset the thread' }, hard: { label: 'Hard', hint: 'A little more practice' }, good: { label: 'Good', hint: 'Keep this interval' }, easy: { label: 'Easy', hint: 'You have this one' } };
+
+  useEffect(() => {
+    setAnswer('');
+    setSelectedOption('');
+    setAnswered(false);
+    setAnswerCorrect(null);
+    setLastRating(null);
+    setSaveError('');
+  }, [card?.id, mode]);
+
+  const startSession = () => {
+    const amount = practiceCount === 'all' ? dueCards.length : Number(practiceCount);
+    setSessionCards(dueCards.slice(0, amount));
+    setCardIndex(0);
+    setSessionStarted(true);
+  };
+
+  const checkAnswer = () => {
+    if (mode === 'recall') {
+      setAnswered(true);
+      return;
+    }
+    const response = mode === 'choice' || mode === 'match' ? selectedOption : answer.trim();
+    if (!response) return;
+    const expected = getObjectiveAnswer(mode, card);
+    setAnswerCorrect(expected ? normalizeReviewAnswer(response) === normalizeReviewAnswer(expected) : null);
+    setAnswered(true);
+  };
+
+  const rate = (rating: ReviewRatingType) => {
+    if (!card || !answered || submit.isPending) return;
+    setLastRating(rating);
+    setSaveError('');
+    submit.mutate({ id: card.id, data: { rating } }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() });
+        setCardIndex(index => index + 1);
+      },
+      onError: () => {
+        setLastRating(null);
+        setSaveError('That review could not be saved. Try again.');
+      },
+    });
+  };
+
   return <div className="content-wrap">
-    <PageHeader eyebrow="Spaced repetition" title="One card at a time." description="Recall first. Reveal second. Then choose the rating that feels honest." action={<Link href="/library" className="button-secondary" data-testid="link-review-library"><LibraryBig size={15} /> Browse shelf</Link>} />
-    {next.isLoading ? <div className="card-surface mx-auto max-w-2xl p-8"><div className="skeleton h-3 w-20" /><div className="skeleton mx-auto mt-20 h-12 w-2/3" /><div className="skeleton mx-auto mt-4 h-4 w-1/2" /><div className="skeleton mt-24 h-12 w-full" /></div> : next.isError ? <ErrorState onRetry={() => next.refetch()} /> : !card ? <EmptyState title="The shelf is quiet." copy="There are no cards waiting right now. Add a new word or come back later for another round." action={<Link href="/library" className="button-primary" data-testid="link-review-empty-library"><Plus size={15} /> Add vocabulary</Link>} /> : <div className="mx-auto max-w-2xl fade-in">
-      <div className="mb-4 flex items-center justify-between"><span className="eyebrow">A card for you</span><span className="mono text-[10px] uppercase tracking-[.1em] text-[hsl(var(--muted-foreground))]">{formatDue(card.dueAt)}</span></div>
-       <div className={`card-surface relative overflow-hidden p-7 text-center transition ${revealed ? 'border-[hsl(var(--primary)/.35)]' : ''}`}><div className="absolute left-0 top-0 h-1 w-full bg-[hsl(var(--accent))]" /><span className="tag mt-2" style={{ color: typeColors[card.type], background: `${typeColors[card.type]}18` }}>{typeLabels[card.type]}</span><h2 className="serif mt-10 text-[clamp(40px,8vw,70px)] leading-none tracking-[-.045em]" data-testid="text-review-term">{card.term}</h2>{card.pronunciation && <p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{card.pronunciation}</p>}<div className="mx-auto mt-9 max-w-lg border-t border-[hsl(var(--border))] pt-7">{!revealed ? <><p className="text-sm text-[hsl(var(--muted-foreground))]">What does this mean?</p><button className="button-primary mt-5" onClick={() => setRevealed(true)} data-testid="button-reveal-answer">Reveal answer <ChevronRight size={15} /></button></> : <div className="fade-in text-left"><p className="eyebrow mb-2">Meaning</p><p className="serif text-2xl leading-snug" data-testid="text-review-meaning">{card.meaning}</p>{card.urduMeaning && <p className="mt-3 rounded-xl bg-[hsl(var(--secondary)/.55)] px-4 py-3 text-right text-lg leading-relaxed" dir="rtl" lang="ur" data-testid="text-review-urdu-meaning">{card.urduMeaning}</p>}{card.translation && <p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">{card.translation}</p>}<div className="mt-7 rounded-xl bg-[hsl(var(--secondary)/.55)] p-4"><p className="eyebrow mb-2">In context</p><p className="text-sm italic leading-relaxed">“{card.example}”</p></div>{card.notes && <p className="mt-4 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Note: {card.notes}</p>}</div>}</div></div>
-      {revealed && <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">{(Object.keys(ratingCopy) as ReviewRatingType[]).map(rating => <button className="review-option" key={rating} onClick={() => rate(rating)} disabled={submit.isPending} data-testid={`button-rate-${rating}`}><span className="block text-sm font-bold">{ratingCopy[rating].label}</span><span className="mt-1 block text-[10px] leading-tight text-[hsl(var(--muted-foreground))]">{ratingCopy[rating].hint}</span></button>)}</div>}
+    <PageHeader eyebrow="Spaced repetition" title="Practice with intention." description="Choose a practice style, answer the prompt, then rate how it felt." action={<Link href="/library" className="button-secondary" data-testid="link-review-library"><LibraryBig size={15} /> Browse shelf</Link>} />
+    {list.isLoading ? <div className="card-surface mx-auto max-w-2xl p-8"><div className="skeleton h-3 w-20" /><div className="skeleton mx-auto mt-20 h-12 w-2/3" /><div className="skeleton mx-auto mt-4 h-4 w-1/2" /><div className="skeleton mt-24 h-12 w-full" /></div> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : dueCards.length === 0 ? <EmptyState title="The shelf is quiet." copy="There are no cards due right now. Add a new word or come back later for another round." action={<Link href="/library" className="button-primary" data-testid="link-review-empty-library"><Plus size={15} /> Add vocabulary</Link>} /> : !sessionStarted ? <div className="mx-auto max-w-3xl">
+      <div className="card-surface p-6 md:p-8">
+        <div className="flex items-start gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--accent)/.25)] text-[hsl(var(--primary))]"><Brain size={20} /></span><div><p className="eyebrow">Build a session</p><h2 className="serif mt-2 text-3xl">How do you want to practice?</h2><p className="mt-2 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{dueCards.length} {dueCards.length === 1 ? 'card is' : 'cards are'} ready today.</p></div></div>
+        <div className="mt-7 grid gap-4 md:grid-cols-[1fr_180px]">
+          <div><label className="field-label" htmlFor="practice-mode">Practice style</label><select id="practice-mode" className="field" value={mode} onChange={event => setMode(event.target.value as PracticeMode)} data-testid="select-practice-mode">{practiceModes.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></div>
+          <div><label className="field-label" htmlFor="practice-count">Words at a time</label><select id="practice-count" className="field" value={practiceCount} onChange={event => setPracticeCount(event.target.value)} data-testid="select-practice-count"><option value="5">5 words</option><option value="10">10 words</option><option value="20">20 words</option><option value="all">All due words</option></select></div>
+        </div>
+        <button className="button-primary mt-7 w-full sm:w-auto" onClick={startSession} data-testid="button-start-practice"><Brain size={16} /> Start practice</button>
+      </div>
+    </div> : !card ? <div className="mx-auto max-w-2xl text-center">
+      <div className="card-surface p-8"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]"><Check size={25} /></span><p className="serif mt-5 text-3xl">Session complete.</p><p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">You practiced {sessionCards.length} {sessionCards.length === 1 ? 'word' : 'words'}. Come back later when the next interval is due.</p><button className="button-primary mt-6" onClick={() => setSessionStarted(false)} data-testid="button-new-practice"><RotateCcw size={15} /> Practice again</button></div>
+    </div> : <div className="mx-auto max-w-2xl fade-in">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><span className="eyebrow">Card {cardIndex + 1} of {sessionCards.length}</span><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{practiceModes.find(option => option.value === mode)?.label}</p></div><button className="button-quiet" onClick={() => setSessionStarted(false)} data-testid="button-change-practice">Change session</button></div>
+      <div className={`card-surface relative overflow-hidden p-6 transition md:p-7 ${answered ? 'border-[hsl(var(--primary)/.35)]' : ''}`}><div className="absolute left-0 top-0 h-1 w-full bg-[hsl(var(--accent))]" /><div className="flex items-center justify-between gap-3"><span className="tag" style={{ color: typeColors[card.type], background: `${typeColors[card.type]}18` }}>{typeLabels[card.type]}</span><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{formatDue(card.dueAt)}</span></div>
+        {mode === 'word' || mode === 'spelling' ? <div className="mt-10 text-center"><p className="eyebrow">Clue</p><p className="serif mt-4 text-2xl leading-snug">{card.meaning}</p></div> : <div className="mt-10 text-center"><h2 className="serif text-[clamp(40px,8vw,70px)] leading-none tracking-[-.045em]" data-testid="text-review-term">{card.term}</h2>{card.pronunciation && <p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{card.pronunciation}</p>}</div>}
+        {!answered ? <div className="mx-auto mt-9 max-w-lg border-t border-[hsl(var(--border))] pt-7">
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{getReviewPrompt(mode, card)}</p>
+          {mode === 'recall' ? <button className="button-primary mt-5" onClick={checkAnswer} data-testid="button-reveal-answer">Reveal answer <ChevronRight size={15} /></button> : mode === 'choice' || mode === 'match' ? <div className="mt-5 space-y-2">{choices.map(choice => <button className={`review-option w-full ${selectedOption === choice ? 'border-[hsl(var(--primary))] bg-[hsl(var(--secondary))]' : ''}`} key={choice} onClick={() => setSelectedOption(choice)} data-testid="button-choice-option">{choice}</button>)}<button className="button-primary mt-3" onClick={checkAnswer} disabled={!selectedOption} data-testid="button-check-answer">Check answer <Check size={15} /></button></div> : <div className="mt-5"><textarea className="field min-h-[90px] resize-y" dir={mode === 'urdu' ? 'rtl' : 'auto'} lang={mode === 'urdu' ? 'ur' : undefined} value={answer} onChange={event => setAnswer(event.target.value)} placeholder={mode === 'urdu' ? 'اردو میں جواب لکھیں' : 'Write your answer here...'} data-testid="input-review-answer" /><button className="button-primary mt-3" onClick={checkAnswer} disabled={!answer.trim()} data-testid="button-check-answer">Check answer <Check size={15} /></button></div>}
+        </div> : <div className="mx-auto mt-9 max-w-lg border-t border-[hsl(var(--border))] pt-7">
+          {answerCorrect === true && <p className="mb-4 text-sm font-semibold text-[hsl(var(--primary))]">Looks right.</p>}
+          {answerCorrect === false && <p className="mb-4 text-sm font-semibold text-[hsl(var(--destructive))]">Not quite—compare with the answer below.</p>}
+          {answerCorrect === null && mode !== 'recall' && <div className="mb-4 rounded-xl bg-[hsl(var(--secondary)/.55)] p-4"><p className="eyebrow mb-2">Your response</p><p className="text-sm leading-relaxed" dir={mode === 'urdu' ? 'rtl' : 'auto'}>{answer || selectedOption}</p></div>}
+          <ReviewAnswerDetails card={card} />
+        </div>}
+      </div>
+      {answered && <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">{(Object.keys(ratingCopy) as ReviewRatingType[]).map(rating => <button className="review-option" key={rating} onClick={() => rate(rating)} disabled={submit.isPending} data-testid={`button-rate-${rating}`}><span className="block text-sm font-bold">{ratingCopy[rating].label}</span><span className="mt-1 block text-[10px] leading-tight text-[hsl(var(--muted-foreground))]">{ratingCopy[rating].hint}</span></button>)}</div>}
+      {saveError && <p className="mt-5 flex items-center justify-center gap-2 text-xs text-[hsl(var(--destructive))]" data-testid="status-review-error"><CircleAlert size={14} /> {saveError}</p>}
       {lastRating && submit.isPending && <p className="mt-5 text-center text-xs text-[hsl(var(--muted-foreground))]" data-testid="status-review-saving"><Loader2 size={13} className="mr-1 inline animate-spin" /> Saving your rhythm...</p>}
-      {lastRating && !submit.isPending && <div className="mt-5 flex items-center justify-center gap-2 text-xs text-[hsl(var(--primary))] fade-in" data-testid="status-review-complete"><Check size={14} /> Noted. Your next card is ready.</div>}
     </div>}
   </div>;
 }
