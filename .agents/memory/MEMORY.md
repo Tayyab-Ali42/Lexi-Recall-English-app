@@ -1,1 +1,2 @@
 - [Generated client DOM types](generated-client-dom-types.md) — Generated fetch clients may need `dom.iterable` in their library TypeScript config for `Headers.entries()`.
+- [Imported workspace setup](imported-workspace-setup.md) — Imported pnpm workspaces may have a lockfile but no installed dependencies or initialized development tables.

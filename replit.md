@@ -1,10 +1,11 @@
-# [Project name]
+# Vocab Atelier
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A personal English vocabulary studio for saving words, phrases, idioms, and phrasal verbs, enriching them with AI explanations, and reviewing them with spaced repetition.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/vocab-atelier run dev` — run the Vocab Atelier web app
+- `pnpm --filter @workspace/api-server run dev` — run the API server
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -22,23 +23,20 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- Web app: `artifacts/vocab-atelier`
+- API routes: `artifacts/api-server/src/routes`
+- Database schema: `lib/db/src/schema`
+- API contract and generated clients: `lib/api-spec`, `lib/api-client-react`, and `lib/api-zod`
+- Print/PDF export: Library page in `artifacts/vocab-atelier/src/App.tsx`, styled in `artifacts/vocab-atelier/src/index.css`
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The web app uses the existing API and PostgreSQL schema; it does not keep vocabulary in browser-only state.
+- Vocabulary export uses the browser print dialog, so users can choose “Save as PDF” without a new PDF runtime dependency.
 
 ## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Save, edit, enrich, search, filter, review, and inspect vocabulary progress.
+- From Library, `Export PDF` prints the complete unfiltered collection. In the print dialog, choose “Save as PDF”.
 
 ## Pointers
 

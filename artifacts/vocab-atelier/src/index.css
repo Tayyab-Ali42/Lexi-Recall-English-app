@@ -158,6 +158,7 @@
 .review-option { border:1px solid hsl(var(--border)); background:hsl(var(--card)); border-radius:15px; padding:15px 13px; text-align:left; cursor:pointer; transition:transform .2s ease, border-color .2s ease, background .2s ease; }
 .review-option:hover { transform:translateY(-2px); border-color:hsl(var(--primary)); background:hsl(var(--secondary)); }
 .review-option:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+.print-export { display:none; }
 
 @media (max-width: 767px) {
   .sidebar { display:none; }
@@ -167,4 +168,27 @@
   .mobile-nav .nav-link { flex-direction:column; gap:3px; padding:7px 13px; font-size:10px; }
   .mobile-nav .nav-link svg { width:18px; height:18px; }
   .modal { padding:20px; border-radius:18px; }
+}
+
+@media print {
+  @page { size: auto; margin: 16mm; }
+  body { background: #fff; color: #241c18; }
+  body * { visibility: hidden !important; }
+  .print-export, .print-export * { visibility: visible !important; }
+  .print-export { display:block; position:absolute; inset:0; padding:0; font-family: Arial, sans-serif; }
+  .print-export-header { border-bottom:2px solid #9a4d3f; margin-bottom:20px; padding-bottom:14px; }
+  .print-export-header .eyebrow { color:#9a4d3f; }
+  .print-export-header h1 { margin:7px 0 5px; font-family: Georgia, serif; font-size:28px; }
+  .print-export-meta { color:#6b625d; font-size:11px; }
+  .print-export-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }
+  .print-export-card { break-inside:avoid; border:1px solid #d8cec5; border-radius:10px; padding:14px; font-size:11px; line-height:1.45; }
+  .print-export-card-heading { align-items:baseline; display:flex; gap:8px; justify-content:space-between; }
+  .print-export-card-heading h2 { font-family: Georgia, serif; font-size:18px; margin:0; }
+  .print-export-card-heading span { color:#9a4d3f; font-size:9px; text-transform:uppercase; }
+  .print-export-pronunciation { color:#6b625d; font-family:monospace; font-size:10px; margin:4px 0 10px; }
+  .print-export-label { color:#9a4d3f; font-size:8px; font-weight:700; letter-spacing:.12em; margin:11px 0 3px; text-transform:uppercase; }
+  .print-export-card p { margin:0; }
+  .print-export-example { font-style:italic; }
+  .print-export-urdu { font-size:13px; }
+  .print-export-tags { color:#6b625d; font-family:monospace; font-size:9px; margin-top:12px !important; }
 }

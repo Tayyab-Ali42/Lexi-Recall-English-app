@@ -6,6 +6,7 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
+  FileDown,
   Flame,
   FolderOpen,
   Gauge,
@@ -211,19 +212,52 @@ function Library() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const params = useMemo(() => ({ search: search || undefined, type: filter === 'all' ? undefined : filter }), [search, filter]);
   const list = useListVocabulary(params);
+  const exportList = useListVocabulary();
   const deleteMutation = useDeleteVocabulary();
   const qc = useQueryClient();
   const items = list.data ?? [];
   const handleDelete = (id: string, term: string) => { if (window.confirm(`Remove “${term}” from your shelf?`)) deleteMutation.mutate({ id }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); } }); };
+  const exportWords = () => {
+    if (!exportList.data?.length) return;
+    window.print();
+  };
   return <div className="content-wrap">
-    <PageHeader eyebrow="The collection" title="Your language, gathered." description="A living shelf of words, phrases, idioms, and verbs you decided were worth keeping." action={<button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-vocabulary"><Plus size={16} /> Add vocabulary</button>} />
+    <PageHeader eyebrow="The collection" title="Your language, gathered." description="A living shelf of words, phrases, idioms, and verbs you decided were worth keeping." action={<div className="flex flex-wrap justify-end gap-2"><button className="button-secondary" onClick={exportWords} disabled={exportList.isLoading || exportList.isError || !exportList.data?.length} data-testid="button-export-vocabulary"><FileDown size={16} /> {exportList.isLoading ? 'Preparing...' : 'Export PDF'}</button><button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-vocabulary"><Plus size={16} /> Add vocabulary</button></div>} />
     <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between fade-in delay-1">
       <div className="relative w-full md:max-w-sm"><Search size={16} className="absolute left-3.5 top-3.5 text-[hsl(var(--muted-foreground))]" /><input className="field pl-10" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your shelf..." data-testid="input-search-vocabulary" /></div>
       <div className="flex gap-1.5 overflow-auto pb-1">{(['all', ...types] as const).map((type) => <button key={type} onClick={() => setFilter(type)} className={`rounded-full px-3.5 py-2 text-xs font-semibold transition ${filter === type ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`} data-testid={`button-filter-${type}`}>{type === 'all' ? 'All words' : typeLabels[type]}</button>)}</div>
     </div>
     {list.isLoading ? <LoadingState rows={5} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : items.length === 0 ? <EmptyState title={search ? 'Nothing matched.' : 'The shelf is still open.'} copy={search ? 'Try a shorter search or another spelling.' : 'Collect words from conversations, books, and the odd sentence that stays with you.'} action={!search ? <button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-empty"><Plus size={15} /> Save a word</button> : undefined} /> : <div className="space-y-3">{items.map((item, index) => <LibraryRow key={item.id} item={item} index={index} onEdit={() => setEditingId(item.id)} onDelete={() => handleDelete(item.id, item.term)} deleting={deleteMutation.isPending} />)}</div>}
+     {exportList.data?.length ? <PrintExport items={exportList.data} /> : null}
     {editingId && <VocabularyModal editingId={editingId === 'new' ? null : editingId} onClose={() => setEditingId(null)} />}
   </div>;
+}
+
+function PrintExport({ items }: { items: VocabularyItem[] }) {
+  return <section className="print-export" aria-hidden="true">
+    <div className="print-export-header">
+      <p className="eyebrow">Vocab Atelier</p>
+      <h1 className="serif">My vocabulary collection</h1>
+      <p className="print-export-meta">{items.length} {items.length === 1 ? 'entry' : 'entries'} · Exported {new Intl.DateTimeFormat('en', { dateStyle: 'long' }).format(new Date())}</p>
+    </div>
+    <div className="print-export-grid">
+      {items.map(item => <article className="print-export-card" key={item.id}>
+        <div className="print-export-card-heading">
+          <h2>{item.term}</h2>
+          <span>{typeLabels[item.type]}</span>
+        </div>
+        {item.pronunciation && <p className="print-export-pronunciation">{item.pronunciation}</p>}
+        <p className="print-export-label">Meaning</p>
+        <p>{item.meaning}</p>
+        {item.urduMeaning && <><p className="print-export-label">Urdu meaning</p><p className="print-export-urdu" dir="rtl" lang="ur">{item.urduMeaning}</p></>}
+        {item.translation && <><p className="print-export-label">Translation</p><p>{item.translation}</p></>}
+        <p className="print-export-label">In context</p>
+        <p className="print-export-example">“{item.example}”</p>
+        {item.notes && <><p className="print-export-label">Notes</p><p>{item.notes}</p></>}
+        {item.tags.length > 0 && <p className="print-export-tags">{item.tags.map(tag => `#${tag}`).join('  ')}</p>}
+      </article>)}
+    </div>
+  </section>;
 }
 
 function LibraryRow({ item, index, onEdit, onDelete, deleting }: { item: VocabularyItem; index: number; onEdit: () => void; onDelete: () => void; deleting: boolean }) {
