@@ -1,25 +1,31 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
   Brain,
+  CalendarDays,
   Check,
   ChevronRight,
   CircleAlert,
+  Headphones,
   FileDown,
   Flame,
   FolderOpen,
   Gauge,
   LibraryBig,
   Loader2,
+  Mic,
+  Pause,
   Pencil,
   Plus,
   RotateCcw,
   Search,
   Sparkles,
+  Tag,
   Target,
   Trash2,
   TrendingUp,
+  Volume2,
   X,
 } from 'lucide-react';
 import {
@@ -114,7 +120,9 @@ function Shell({ children }: { children: ReactNode }) {
         <div className="mt-12 space-y-1">
           <p className="eyebrow mb-3 px-3 text-[hsl(var(--sidebar-foreground)/.38)]">Study room</p>
           <NavItem href="/" icon={<Gauge size={17} />} label="Today" />
+          <NavItem href="/challenge" icon={<CalendarDays size={17} />} label="Challenge" />
           <NavItem href="/library" icon={<LibraryBig size={17} />} label="Library" />
+          <NavItem href="/shadowing" icon={<Headphones size={17} />} label="Shadowing" />
           <NavItem href="/review" icon={<Brain size={17} />} label="Review" />
           <NavItem href="/insights" icon={<TrendingUp size={17} />} label="Insights" />
         </div>
@@ -134,7 +142,9 @@ function Shell({ children }: { children: ReactNode }) {
       <main className="main-area">{children}</main>
       <nav className="mobile-nav">
         <NavItem href="/" icon={<Gauge />} label="Today" />
+        <NavItem href="/challenge" icon={<CalendarDays />} label="Challenge" />
         <NavItem href="/library" icon={<LibraryBig />} label="Library" />
+        <NavItem href="/shadowing" icon={<Headphones />} label="Shadowing" />
         <NavItem href="/review" icon={<Brain />} label="Review" />
         <NavItem href="/insights" icon={<TrendingUp />} label="Insights" />
       </nav>
@@ -166,6 +176,69 @@ function StatCard({ label, value, detail, accent = 'primary' }: { label: string;
   return <div className="card-surface hover-lift p-5" data-testid={`stat-${label.toLowerCase().replaceAll(' ', '-')}`}><div className="mb-6 flex items-start justify-between"><span className="eyebrow">{label}</span><span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} /></div><p className="serif text-4xl leading-none">{value}</p><p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">{detail}</p></div>;
 }
 
+const dailyChallengeStorageKey = 'vocab-atelier-daily-challenge';
+
+function getDayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getDayNumber(value: string) {
+  return value.split('').reduce((total, character) => total + character.charCodeAt(0), 0);
+}
+
+function DailyChallenge({ fullPage = false }: { fullPage?: boolean }) {
+  const list = useListVocabulary();
+  const [revealed, setRevealed] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const items = (list.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id));
+  const today = getDayKey();
+  const item = items.length ? items[getDayNumber(today) % items.length] : undefined;
+
+  useEffect(() => {
+    try {
+      setCompleted(window.localStorage.getItem(dailyChallengeStorageKey) === today);
+    } catch {
+      setCompleted(false);
+    }
+  }, [today]);
+
+  const finish = () => {
+    try {
+      window.localStorage.setItem(dailyChallengeStorageKey, today);
+    } catch {
+      // The challenge still completes for this session if storage is unavailable.
+    }
+    setCompleted(true);
+    setRevealed(true);
+  };
+
+  const challenge = list.isLoading ? <div className="card-surface p-6"><div className="skeleton h-4 w-32" /><div className="skeleton mt-6 h-9 w-3/4" /><div className="skeleton mt-4 h-4 w-1/2" /></div> :
+    list.isError ? <ErrorState onRetry={() => list.refetch()} /> :
+    !item ? <EmptyState title="Your challenge is waiting." copy="Save a few words to your shelf and tomorrow's prompt will be ready." action={<Link href="/library" className="button-primary"><Plus size={15} /> Save a word</Link>} /> :
+    <div className="card-surface relative overflow-hidden p-7 md:p-9" data-testid="card-daily-challenge">
+      <div className="absolute -right-12 -top-16 h-48 w-48 rounded-full border-[24px] border-[hsl(var(--accent)/.2)]" />
+      <div className="relative">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[hsl(var(--accent)/.28)] text-[hsl(var(--primary))]"><CalendarDays size={17} /></span><span className="eyebrow">One thoughtful prompt</span></div>
+          <span className={`tag ${completed ? 'bg-[hsl(var(--primary)/.12)] text-[hsl(var(--primary))]' : ''}`}>{completed ? 'Complete today' : 'Ready in 2 minutes'}</span>
+        </div>
+        <p className="eyebrow mt-8">Today's word</p>
+        <h2 className="serif mt-2 text-4xl leading-tight">{revealed ? item.term : 'What word fits this meaning?'}</h2>
+        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{item.meaning}</p>
+        <div className="mt-6 rounded-2xl bg-[hsl(var(--secondary)/.55)] p-4"><p className="eyebrow mb-2">Use it in context</p><p className="text-sm italic leading-relaxed">“{item.example}”</p></div>
+        <div className="mt-7 flex flex-wrap items-center gap-3">
+          {!revealed && <button className="button-primary" onClick={() => setRevealed(true)} data-testid="button-reveal-challenge"><Sparkles size={15} /> Reveal the word</button>}
+          {revealed && !completed && <button className="button-primary" onClick={finish} data-testid="button-complete-challenge"><Check size={15} /> Mark challenge complete</button>}
+          {completed && <span className="flex items-center gap-2 text-sm font-semibold text-[hsl(var(--primary))]"><Check size={16} /> Your daily practice is logged.</span>}
+          <Link href="/shadowing" className="button-quiet"><Headphones size={14} /> Say it aloud</Link>
+        </div>
+      </div>
+    </div>;
+
+  if (fullPage) return <div className="content-wrap"><PageHeader eyebrow="Daily vocabulary" title="A small challenge, every day." description="Turn one saved word into a memory you can reach for in conversation." action={<Link href="/" className="button-secondary"><Gauge size={15} /> Back to today</Link>} /><div className="mx-auto max-w-3xl">{challenge}</div></div>;
+  return <section className="mt-8 fade-in delay-2"><div className="mb-4 flex items-end justify-between gap-3"><div><p className="eyebrow">Daily vocabulary</p><h2 className="serif mt-2 text-2xl">Keep the thread alive.</h2></div><Link href="/challenge" className="button-quiet">Open challenge <ChevronRight size={14} /></Link></div>{challenge}</section>;
+}
+
 function Dashboard() {
   const dashboard = useGetDashboard();
   const list = useListVocabulary();
@@ -181,6 +254,7 @@ function Dashboard() {
         <StatCard label="Mastered" value={`${percent}%`} detail={`${summary.mastered} durable memories`} accent="sage" />
         <StatCard label="Streak" value={`${summary.streak}d`} detail="your rhythm is becoming a habit" accent="gold" />
       </section>
+      <DailyChallenge />
       <section className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_.65fr]">
         <div className="card-surface relative overflow-hidden p-7 md:p-9 fade-in delay-2">
           <div className="absolute -right-10 -top-12 h-48 w-48 rounded-full border-[22px] border-[hsl(var(--accent)/.18)]" />
@@ -209,13 +283,16 @@ function VocabPreview({ item, index = 0 }: { item: VocabularyItem; index?: numbe
 function Library() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | VocabularyType>('all');
+  const [category, setCategory] = useState('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const params = useMemo(() => ({ search: search || undefined, type: filter === 'all' ? undefined : filter }), [search, filter]);
   const list = useListVocabulary(params);
   const exportList = useListVocabulary();
   const deleteMutation = useDeleteVocabulary();
   const qc = useQueryClient();
-  const items = list.data ?? [];
+  const allItems = list.data ?? [];
+  const categories = useMemo(() => Array.from(new Set(allItems.flatMap(item => item.tags))).sort((a, b) => a.localeCompare(b)), [allItems]);
+  const items = category === 'all' ? allItems : allItems.filter(item => item.tags.includes(category));
   const handleDelete = (id: string, term: string) => { if (window.confirm(`Remove “${term}” from your shelf?`)) deleteMutation.mutate({ id }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); } }); };
   const exportWords = () => {
     if (!exportList.data?.length) return;
@@ -227,6 +304,10 @@ function Library() {
       <div className="relative w-full md:max-w-sm"><Search size={16} className="absolute left-3.5 top-3.5 text-[hsl(var(--muted-foreground))]" /><input className="field pl-10" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your shelf..." data-testid="input-search-vocabulary" /></div>
       <div className="flex gap-1.5 overflow-auto pb-1">{(['all', ...types] as const).map((type) => <button key={type} onClick={() => setFilter(type)} className={`rounded-full px-3.5 py-2 text-xs font-semibold transition ${filter === type ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`} data-testid={`button-filter-${type}`}>{type === 'all' ? 'All words' : typeLabels[type]}</button>)}</div>
     </div>
+     <section className="mb-7 card-surface p-5 fade-in delay-2" data-testid="section-themes">
+       <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]"><Tag size={15} /></span><div><p className="eyebrow">Thematic shelves</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Use tags as categories to make your words easier to revisit.</p></div></div><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{categories.length} {categories.length === 1 ? 'theme' : 'themes'}</span></div>
+       {categories.length ? <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => setCategory('all')} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${category === 'all' ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'}`} data-testid="button-category-all">All themes</button>{categories.map(theme => <button key={theme} onClick={() => setCategory(theme)} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${category === theme ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'}`} data-testid={`button-category-${theme}`}>#{theme} <span className="mono ml-1 opacity-70">{allItems.filter(item => item.tags.includes(theme)).length}</span></button>)}</div> : <p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">Add themes like travel, work, or conversation in a word's Tags field.</p>}
+     </section>
     {list.isLoading ? <LoadingState rows={5} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : items.length === 0 ? <EmptyState title={search ? 'Nothing matched.' : 'The shelf is still open.'} copy={search ? 'Try a shorter search or another spelling.' : 'Collect words from conversations, books, and the odd sentence that stays with you.'} action={!search ? <button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-empty"><Plus size={15} /> Save a word</button> : undefined} /> : <div className="space-y-3">{items.map((item, index) => <LibraryRow key={item.id} item={item} index={index} onEdit={() => setEditingId(item.id)} onDelete={() => handleDelete(item.id, item.term)} deleting={deleteMutation.isPending} />)}</div>}
      {exportList.data?.length ? <PrintExport items={exportList.data} /> : null}
     {editingId && <VocabularyModal editingId={editingId === 'new' ? null : editingId} onClose={() => setEditingId(null)} />}
@@ -479,6 +560,147 @@ function Review() {
   </div>;
 }
 
+function Shadowing() {
+  const list = useListVocabulary();
+  const items = list.data ?? [];
+  const [selectedId, setSelectedId] = useState('');
+  const [recordings, setRecordings] = useState<Record<string, string>>({});
+  const [isRecording, setIsRecording] = useState(false);
+  const [nativePlaying, setNativePlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [status, setStatus] = useState('');
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const selected = items.find(item => item.id === selectedId) ?? items[0];
+  const recording = selected ? recordings[selected.id] : undefined;
+
+  useEffect(() => {
+    if (!selectedId && items[0]) setSelectedId(items[0].id);
+  }, [items, selectedId]);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('vocab-atelier-shadowing-recordings');
+      if (saved) setRecordings(JSON.parse(saved) as Record<string, string>);
+    } catch {
+      setRecordings({});
+    }
+    return () => {
+      window.speechSynthesis?.cancel();
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      streamRef.current?.getTracks().forEach(track => track.stop());
+    };
+  }, []);
+
+  const speakNative = () => {
+    if (!selected || !window.speechSynthesis) {
+      setStatus('Native playback is not available in this browser.');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(selected.term);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.82;
+    utterance.onstart = () => setNativePlaying(true);
+    utterance.onend = () => setNativePlaying(false);
+    utterance.onerror = () => setNativePlaying(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopRecording = () => {
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+  };
+
+  const startRecording = async () => {
+    if (!selected) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setStatus('Recording is not supported in this browser. Try the latest Chrome, Safari, or Firefox.');
+      return;
+    }
+    try {
+      window.speechSynthesis?.cancel();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      streamRef.current = stream;
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+      recorder.ondataavailable = event => {
+        if (event.data.size) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = String(reader.result);
+          setRecordings(previous => {
+            const next = { ...previous, [selected.id]: dataUrl };
+            try {
+              window.localStorage.setItem('vocab-atelier-shadowing-recordings', JSON.stringify(next));
+            } catch {
+              setStatus('Your take is ready for playback, but this browser could not save it locally.');
+            }
+            return next;
+          });
+          setStatus('Your take is ready. Compare it with the native playback below.');
+        };
+        reader.readAsDataURL(blob);
+        stream.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+        setIsRecording(false);
+        if (timerRef.current) window.clearInterval(timerRef.current);
+      };
+      recorder.start();
+      setElapsed(0);
+      setIsRecording(true);
+      setStatus('Recording... say the word naturally, then stop when you finish.');
+      timerRef.current = window.setInterval(() => setElapsed(value => value + 1), 1000);
+    } catch {
+      setStatus('Microphone access was not granted. Allow microphone access and try again.');
+    }
+  };
+
+  const clearTake = () => {
+    if (!selected) return;
+    setRecordings(previous => {
+      const next = { ...previous };
+      delete next[selected.id];
+      try {
+        window.localStorage.setItem('vocab-atelier-shadowing-recordings', JSON.stringify(next));
+      } catch {
+        // The in-memory state is still cleared.
+      }
+      return next;
+    });
+    setStatus('Take cleared. Record another whenever you are ready.');
+  };
+
+  return <div className="content-wrap">
+    <PageHeader eyebrow="Speak it into memory" title="Shadow the sound." description="Listen to a native-style pronunciation, record your own voice, and compare the two until the word feels natural." action={<Link href="/library" className="button-secondary"><LibraryBig size={15} /> Choose from library</Link>} />
+    {list.isLoading ? <LoadingState rows={4} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : !selected ? <EmptyState title="Your microphone is waiting." copy="Save some vocabulary first, then return here to practice each word out loud." action={<Link href="/library" className="button-primary"><Plus size={15} /> Save vocabulary</Link>} /> : <div className="grid gap-6 lg:grid-cols-[.78fr_1.22fr]">
+      <div className="card-surface p-5 md:p-6">
+        <div className="flex items-center justify-between"><div><p className="eyebrow">Your practice list</p><h2 className="serif mt-2 text-2xl">Choose a word.</h2></div><Mic size={19} className="text-[hsl(var(--primary))]" /></div>
+        <div className="mt-5 space-y-2">{items.map(item => <button key={item.id} onClick={() => { if (isRecording) stopRecording(); setSelectedId(item.id); setStatus(''); }} className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition ${selected.id === item.id ? 'border-[hsl(var(--primary)/.5)] bg-[hsl(var(--secondary)/.65)]' : 'border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary)/.4)]'}`} data-testid={`button-shadow-word-${item.id}`}><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--accent)/.25)] text-xs font-bold text-[hsl(var(--primary))]">{item.term.slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.term}</span><span className="mt-0.5 block truncate text-xs text-[hsl(var(--muted-foreground))]">{item.meaning}</span></span>{recordings[item.id] && <Check size={15} className="shrink-0 text-[hsl(var(--primary))]" />}</button>)}</div>
+        <div className="mt-6 rounded-2xl bg-[hsl(var(--secondary)/.45)] p-4"><p className="eyebrow mb-2">A simple loop</p><p className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Listen once. Notice the stress. Record yourself. Compare. Repeat until it sounds easy.</p></div>
+      </div>
+      <div className="card-surface overflow-hidden p-6 md:p-8" data-testid="panel-shadowing">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><span className="tag" style={{ color: typeColors[selected.type], background: `${typeColors[selected.type]}18` }}>{typeLabels[selected.type]}</span><h2 className="serif mt-5 text-[clamp(42px,7vw,72px)] leading-none tracking-[-.05em]">{selected.term}</h2><p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{selected.pronunciation || 'Listen for the natural stress and rhythm'}</p></div><div className="rounded-2xl bg-[hsl(var(--accent)/.25)] p-3 text-[hsl(var(--primary))]"><Headphones size={22} /></div></div>
+        <p className="mt-6 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{selected.meaning}</p>
+        <div className="mt-7 grid gap-3 md:grid-cols-2">
+          <div className="rounded-2xl border border-[hsl(var(--border))] p-4"><div className="flex items-center justify-between"><p className="eyebrow">Native audio</p><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">en-US</span></div><div className="mt-5 flex items-center gap-3"><button className="flex h-11 w-11 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" onClick={speakNative} aria-label="Play native pronunciation" data-testid="button-play-native">{nativePlaying ? <Pause size={17} /> : <Volume2 size={17} />}</button><div className="flex flex-1 items-end gap-1">{[18, 28, 14, 34, 22, 39, 20, 30, 16, 25, 13, 21].map((height, index) => <span key={index} className={`wave-bar ${nativePlaying ? 'wave-bar-active' : ''}`} style={{ height }} />)}</div></div><p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">Listen for the stressed syllable and the shape of the final sound.</p></div>
+          <div className="rounded-2xl border border-[hsl(var(--border))] p-4"><div className="flex items-center justify-between"><p className="eyebrow">Your recording</p><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{isRecording ? `${String(elapsed).padStart(2, '0')}s` : recording ? 'saved locally' : 'not recorded'}</span></div><div className="mt-5 flex items-center gap-3"><button className={`flex h-11 w-11 items-center justify-center rounded-full ${isRecording ? 'bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]'}`} onClick={isRecording ? stopRecording : startRecording} aria-label={isRecording ? 'Stop recording' : 'Start recording'} data-testid="button-record-pronunciation">{isRecording ? <Pause size={17} /> : <Mic size={17} />}</button><div className="flex flex-1 items-end gap-1">{[12, 22, 17, 27, 15, 33, 19, 25, 13, 28, 18, 23].map((height, index) => <span key={index} className={`wave-bar ${isRecording ? 'wave-bar-active' : ''}`} style={{ height }} />)}</div></div><p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">{isRecording ? 'Recording from your microphone...' : 'Record your voice, then play it back here.'}</p></div>
+        </div>
+        {recording && <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-[hsl(var(--secondary)/.55)] p-4"><audio ref={audioRef} src={recording} controls className="h-9 min-w-[220px] flex-1" /><button className="button-quiet text-[hsl(var(--destructive))]" onClick={clearTake}><Trash2 size={14} /> Clear take</button></div>}
+        {status && <p className="mt-5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-3 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]" role="status">{status}</p>}
+        <div className="mt-7 border-t border-[hsl(var(--border))] pt-5"><p className="eyebrow mb-2">Compare by ear</p><p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Aim for the same stress, rhythm, and relaxed ending. You do not need to sound identical—just clear and comfortable.</p></div>
+      </div>
+    </div>}
+  </div>;
+}
+
 function Insights() {
   const dashboard = useGetDashboard();
   const list = useListVocabulary();
@@ -508,7 +730,7 @@ function NotFoundView() {
 
 function Router() {
   const [location] = useLocation();
-  return <Shell><ErrorBoundary resetKey={location}><Switch><Route path="/" component={Dashboard} /><Route path="/library" component={Library} /><Route path="/review" component={Review} /><Route path="/insights" component={Insights} /><Route component={NotFoundView} /></Switch></ErrorBoundary></Shell>;
+  return <Shell><ErrorBoundary resetKey={location}><Switch><Route path="/" component={Dashboard} /><Route path="/challenge" component={() => <DailyChallenge fullPage />} /><Route path="/library" component={Library} /><Route path="/shadowing" component={Shadowing} /><Route path="/review" component={Review} /><Route path="/insights" component={Insights} /><Route component={NotFoundView} /></Switch></ErrorBoundary></Shell>;
 }
 
 function App() {

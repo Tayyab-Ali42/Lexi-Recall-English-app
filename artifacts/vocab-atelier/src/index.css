@@ -158,6 +158,8 @@
 .review-option { border:1px solid hsl(var(--border)); background:hsl(var(--card)); border-radius:15px; padding:15px 13px; text-align:left; cursor:pointer; transition:transform .2s ease, border-color .2s ease, background .2s ease; }
 .review-option:hover { transform:translateY(-2px); border-color:hsl(var(--primary)); background:hsl(var(--secondary)); }
 .review-option:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+.wave-bar { display:block; width:3px; border-radius:999px; background:hsl(var(--primary) / .24); transition:background .2s ease, transform .2s ease; }
+.wave-bar-active { background:hsl(var(--primary)); animation:quiet-pulse .8s ease-in-out infinite alternate; }
 .print-export { display:none; }
 
 @media (max-width: 767px) {
