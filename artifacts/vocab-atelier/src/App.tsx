@@ -361,7 +361,7 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
   const enrich = useEnrichVocabulary();
   useEffect(() => {
     const item = itemQuery.data;
-     if (item) setForm({ term: item.term, type: item.type, meaning: item.meaning, partOfSpeech: item.partOfSpeech ?? '', pronunciation: item.pronunciation ?? '', example: item.example, translation: item.translation ?? '', urduMeaning: item.urduMeaning ?? '', notes: item.notes ?? '', tags: item.tags.join(', '), retrievalQuestions: item.retrievalQuestions.length ? item.retrievalQuestions : [''] });
+     if (item) setForm({ term: item.term, type: item.type, meaning: item.meaning, partOfSpeech: item.partOfSpeech ?? '', pronunciation: item.pronunciation ?? '', example: item.example, translation: item.translation ?? '', urduMeaning: item.urduMeaning ?? '', notes: item.notes ?? '', tags: item.tags.join(', '), retrievalQuestions: item.retrievalQuestions?.length ? item.retrievalQuestions : [''] });
   }, [itemQuery.data]);
   const set = (key: keyof Omit<FormState, 'retrievalQuestions'>, value: string) => setForm(prev => ({ ...prev, [key]: value }));
   const setQuestion = (index: number, value: string) => setForm(prev => ({ ...prev, retrievalQuestions: prev.retrievalQuestions.map((question, questionIndex) => questionIndex === index ? value : question) }));
@@ -483,7 +483,7 @@ function Review() {
   const [saveError, setSaveError] = useState('');
   const [activeQuestion, setActiveQuestion] = useState('');
   const dueCards = useMemo(() => (list.data ?? []).filter(item => new Date(item.dueAt).getTime() <= Date.now()).sort((a, b) => +new Date(a.dueAt) - +new Date(b.dueAt)), [list.data]);
-  const retrievalEligible = useMemo(() => dueCards.filter(item => item.retrievalQuestions.length > 0).length, [dueCards]);
+  const retrievalEligible = useMemo(() => dueCards.filter(item => (item.retrievalQuestions?.length ?? 0) > 0).length, [dueCards]);
   const card = sessionCards[cardIndex];
   const choices = useMemo(() => {
     if (!card || (mode !== 'choice' && mode !== 'match')) return [];
@@ -498,12 +498,12 @@ function Review() {
     setAnswerCorrect(null);
     setLastRating(null);
     setSaveError('');
-    setActiveQuestion(mode === 'retrieval' && card?.retrievalQuestions.length ? card.retrievalQuestions[Math.floor(Math.random() * card.retrievalQuestions.length)] : '');
+    setActiveQuestion(mode === 'retrieval' && card?.retrievalQuestions?.length ? card.retrievalQuestions[Math.floor(Math.random() * card.retrievalQuestions.length)] : '');
   }, [card?.id, mode]);
 
   const startSession = () => {
     if (mode === 'retrieval' && retrievalEligible === 0) return;
-    const pool = mode === 'retrieval' ? dueCards.filter(item => item.retrievalQuestions.length > 0) : dueCards;
+    const pool = mode === 'retrieval' ? dueCards.filter(item => (item.retrievalQuestions?.length ?? 0) > 0) : dueCards;
     const amount = practiceCount === 'all' ? pool.length : Number(practiceCount);
     setSessionCards(pool.slice(0, amount));
     setCardIndex(0);
