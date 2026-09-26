@@ -21,6 +21,7 @@ export interface Enrichment {
   /** @nullable */
   urduMeaning?: string | null;
   tags: string[];
+  retrievalQuestions?: string[];
   /** @nullable */
   memoryHook?: string | null;
 }

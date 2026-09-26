@@ -37,6 +37,7 @@ export const ListVocabularyResponseItem = zod.object({
   "urduMeaning": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "retrievalQuestions": zod.array(zod.string()),
   "intervalDays": zod.number(),
   "easeFactor": zod.number(),
   "repetitions": zod.number().int(),
@@ -67,6 +68,7 @@ export const CreateVocabularyBody = zod.object({
   "urduMeaning": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
+  "retrievalQuestions": zod.array(zod.string()).optional(),
   "source": zod.enum(['manual', 'ai']).default(createVocabularyBodySourceDefault)
 })
 
@@ -82,6 +84,7 @@ export const CreateVocabularyResponse = zod.object({
   "urduMeaning": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "retrievalQuestions": zod.array(zod.string()),
   "intervalDays": zod.number(),
   "easeFactor": zod.number(),
   "repetitions": zod.number().int(),
@@ -111,6 +114,7 @@ export const GetVocabularyResponse = zod.object({
   "urduMeaning": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "retrievalQuestions": zod.array(zod.string()),
   "intervalDays": zod.number(),
   "easeFactor": zod.number(),
   "repetitions": zod.number().int(),
@@ -143,7 +147,8 @@ export const UpdateVocabularyBody = zod.object({
   "translation": zod.string().nullish(),
   "urduMeaning": zod.string().nullish(),
   "notes": zod.string().nullish(),
-  "tags": zod.array(zod.string()).optional()
+  "tags": zod.array(zod.string()).optional(),
+  "retrievalQuestions": zod.array(zod.string()).optional()
 })
 
 export const UpdateVocabularyResponse = zod.object({
@@ -158,6 +163,7 @@ export const UpdateVocabularyResponse = zod.object({
   "urduMeaning": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "retrievalQuestions": zod.array(zod.string()),
   "intervalDays": zod.number(),
   "easeFactor": zod.number(),
   "repetitions": zod.number().int(),
@@ -207,6 +213,7 @@ export const GetNextReviewResponse = zod.object({
   "urduMeaning": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "retrievalQuestions": zod.array(zod.string()),
   "intervalDays": zod.number(),
   "easeFactor": zod.number(),
   "repetitions": zod.number().int(),
@@ -240,6 +247,7 @@ export const SubmitReviewResponse = zod.object({
   "urduMeaning": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "retrievalQuestions": zod.array(zod.string()),
   "intervalDays": zod.number(),
   "easeFactor": zod.number(),
   "repetitions": zod.number().int(),
@@ -272,6 +280,7 @@ export const EnrichVocabularyResponse = zod.object({
   "translation": zod.string().nullish(),
   "urduMeaning": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "retrievalQuestions": zod.array(zod.string()).optional(),
   "memoryHook": zod.string().nullish()
 })
 

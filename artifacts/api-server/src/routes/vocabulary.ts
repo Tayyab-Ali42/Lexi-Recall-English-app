@@ -63,6 +63,7 @@ router.post("/vocabulary", async (req, res): Promise<void> => {
       id: randomUUID(),
       ...parsed.data,
       tags: parsed.data.tags ?? [],
+      retrievalQuestions: parsed.data.retrievalQuestions ?? [],
     })
     .returning();
   res.status(201).json(CreateVocabularyResponse.parse(item));

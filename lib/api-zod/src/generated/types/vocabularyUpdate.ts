@@ -26,4 +26,5 @@ export interface VocabularyUpdate {
   /** @nullable */
   notes?: string | null;
   tags?: string[];
+  retrievalQuestions?: string[];
 }

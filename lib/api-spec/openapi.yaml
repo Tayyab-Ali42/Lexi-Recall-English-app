@@ -224,6 +224,7 @@ components:
         - meaning
         - example
         - tags
+        - retrievalQuestions
         - intervalDays
         - easeFactor
         - repetitions
@@ -252,6 +253,10 @@ components:
         notes:
           type: ["string", "null"]
         tags:
+          type: array
+          items:
+            type: string
+        retrievalQuestions:
           type: array
           items:
             type: string
@@ -302,6 +307,10 @@ components:
           type: array
           items:
             type: string
+        retrievalQuestions:
+          type: array
+          items:
+            type: string
         source:
           type: string
           enum: [manual, ai]
@@ -331,6 +340,10 @@ components:
         notes:
           type: ["string", "null"]
         tags:
+          type: array
+          items:
+            type: string
+        retrievalQuestions:
           type: array
           items:
             type: string
@@ -395,6 +408,10 @@ components:
         urduMeaning:
           type: ["string", "null"]
         tags:
+          type: array
+          items:
+            type: string
+        retrievalQuestions:
           type: array
           items:
             type: string

@@ -64,8 +64,9 @@ type FormState = {
   urduMeaning: string;
   notes: string;
   tags: string;
+  retrievalQuestions: string[];
 };
-const blankForm: FormState = { term: '', type: 'word', meaning: '', partOfSpeech: '', pronunciation: '', example: '', translation: '', urduMeaning: '', notes: '', tags: '' };
+const blankForm: FormState = { term: '', type: 'word', meaning: '', partOfSpeech: '', pronunciation: '', example: '', translation: '', urduMeaning: '', notes: '', tags: '', retrievalQuestions: [''] };
 
 const typeLabels: Record<string, string> = { word: 'Word', phrase: 'Phrase', idiom: 'Idiom', phrasal_verb: 'Phrasal verb' };
 const typeColors: Record<string, string> = { word: '#9a4d3f', phrase: '#5f806a', idiom: '#cf9651', phrasal_verb: '#56748a' };
@@ -360,15 +361,18 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
   const enrich = useEnrichVocabulary();
   useEffect(() => {
     const item = itemQuery.data;
-     if (item) setForm({ term: item.term, type: item.type, meaning: item.meaning, partOfSpeech: item.partOfSpeech ?? '', pronunciation: item.pronunciation ?? '', example: item.example, translation: item.translation ?? '', urduMeaning: item.urduMeaning ?? '', notes: item.notes ?? '', tags: item.tags.join(', ') });
+     if (item) setForm({ term: item.term, type: item.type, meaning: item.meaning, partOfSpeech: item.partOfSpeech ?? '', pronunciation: item.pronunciation ?? '', example: item.example, translation: item.translation ?? '', urduMeaning: item.urduMeaning ?? '', notes: item.notes ?? '', tags: item.tags.join(', '), retrievalQuestions: item.retrievalQuestions.length ? item.retrievalQuestions : [''] });
   }, [itemQuery.data]);
-  const set = (key: keyof FormState, value: string) => setForm(prev => ({ ...prev, [key]: value }));
-   const applyEnrichment = () => { if (!form.term.trim()) return; enrich.mutate({ data: { term: form.term.trim(), type: form.type as VocabularyType, context: context || null } }, { onSuccess: (data) => setForm(prev => ({ ...prev, term: data.term, meaning: data.meaning, partOfSpeech: data.partOfSpeech ?? '', pronunciation: data.pronunciation ?? '', example: data.example, translation: data.translation ?? '', urduMeaning: data.urduMeaning ?? '', tags: data.tags.join(', '), notes: data.memoryHook ? `Memory hook: ${data.memoryHook}` : prev.notes })) }); };
+  const set = (key: keyof Omit<FormState, 'retrievalQuestions'>, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+  const setQuestion = (index: number, value: string) => setForm(prev => ({ ...prev, retrievalQuestions: prev.retrievalQuestions.map((question, questionIndex) => questionIndex === index ? value : question) }));
+  const addQuestion = () => setForm(prev => ({ ...prev, retrievalQuestions: [...prev.retrievalQuestions, ''] }));
+  const removeQuestion = (index: number) => setForm(prev => ({ ...prev, retrievalQuestions: prev.retrievalQuestions.length > 1 ? prev.retrievalQuestions.filter((_, questionIndex) => questionIndex !== index) : [''] }));
+   const applyEnrichment = () => { if (!form.term.trim()) return; enrich.mutate({ data: { term: form.term.trim(), type: form.type as VocabularyType, context: context || null } }, { onSuccess: (data) => setForm(prev => ({ ...prev, term: data.term, meaning: data.meaning, partOfSpeech: data.partOfSpeech ?? '', pronunciation: data.pronunciation ?? '', example: data.example, translation: data.translation ?? '', urduMeaning: data.urduMeaning ?? '', tags: data.tags.join(', '), retrievalQuestions: data.retrievalQuestions?.length ? data.retrievalQuestions : prev.retrievalQuestions, notes: data.memoryHook ? `Memory hook: ${data.memoryHook}` : prev.notes })) }); };
   const save = (event: FormEvent) => {
     event.preventDefault();
     if (!form.term.trim() || !form.meaning.trim() || !form.example.trim()) { setSaveError('Term, meaning, and example are required.'); return; }
     setSaveError('');
-     const payload: VocabularyInput = { term: form.term.trim(), type: form.type as VocabularyType, meaning: form.meaning.trim(), partOfSpeech: form.partOfSpeech.trim() || null, pronunciation: form.pronunciation.trim() || null, example: form.example.trim(), translation: form.translation.trim() || null, urduMeaning: form.urduMeaning.trim() || null, notes: form.notes.trim() || null, tags: form.tags.split(',').map(tag => tag.trim()).filter(Boolean), source: enrich.data ? 'ai' : 'manual' };
+     const payload: VocabularyInput = { term: form.term.trim(), type: form.type as VocabularyType, meaning: form.meaning.trim(), partOfSpeech: form.partOfSpeech.trim() || null, pronunciation: form.pronunciation.trim() || null, example: form.example.trim(), translation: form.translation.trim() || null, urduMeaning: form.urduMeaning.trim() || null, notes: form.notes.trim() || null, tags: form.tags.split(',').map(tag => tag.trim()).filter(Boolean), retrievalQuestions: form.retrievalQuestions.map(question => question.trim()).filter(Boolean), source: enrich.data ? 'ai' : 'manual' };
     if (editingId) update.mutate({ id: editingId, data: payload }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); qc.invalidateQueries({ queryKey: getGetVocabularyQueryKey(editingId) }); onClose(); }, onError: () => setSaveError('That edit could not be saved. Try again.') });
     else create.mutate({ data: payload }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); onClose(); }, onError: () => setSaveError('That word could not be saved. Try again.') });
   };
@@ -383,6 +387,7 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
       <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="vocab-pos">Part of speech</label><input id="vocab-pos" className="field" value={form.partOfSpeech} onChange={e => set('partOfSpeech', e.target.value)} placeholder="noun, verb..." data-testid="input-vocabulary-pos" /></div><div><label className="field-label" htmlFor="vocab-pronunciation">Pronunciation</label><input id="vocab-pronunciation" className="field" value={form.pronunciation} onChange={e => set('pronunciation', e.target.value)} placeholder="/ˌser.ənˈdip.ə.ti/" data-testid="input-vocabulary-pronunciation" /></div></div>
       <div><label className="field-label" htmlFor="vocab-example">Example sentence</label><textarea id="vocab-example" className="field min-h-[80px] resize-y" value={form.example} onChange={e => set('example', e.target.value)} placeholder="Put it in a sentence you might actually say." data-testid="input-vocabulary-example" /></div>
        <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="vocab-translation">Translation</label><input id="vocab-translation" className="field" value={form.translation} onChange={e => set('translation', e.target.value)} placeholder="Optional" data-testid="input-vocabulary-translation" /></div><div><label className="field-label" htmlFor="vocab-tags">Tags</label><input id="vocab-tags" className="field" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="travel, work, curious" data-testid="input-vocabulary-tags" /></div></div>
+      <div><div className="flex items-center justify-between"><label className="field-label">Recall questions</label><span className="text-[10px] text-[hsl(var(--muted-foreground))]">2-3 scenario clues, no giveaways</span></div><div className="mt-1 space-y-2">{form.retrievalQuestions.map((question, index) => <div className="flex gap-2" key={index}><input className="field flex-1" value={question} onChange={e => setQuestion(index, e.target.value)} placeholder="Describe a situation where this word applies, without naming it" data-testid={`input-retrieval-question-${index}`} /><button type="button" className="button-secondary shrink-0 px-3" onClick={() => removeQuestion(index)} aria-label="Remove question" data-testid={`button-remove-retrieval-question-${index}`}><Trash2 size={14} /></button></div>)}</div><button type="button" className="button-quiet mt-2" onClick={addQuestion} data-testid="button-add-retrieval-question"><Plus size={14} /> Add a question</button></div>
       <div><label className="field-label" htmlFor="vocab-notes">Private notes</label><textarea id="vocab-notes" className="field min-h-[65px] resize-y" value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="A memory, a nuance, a connection..." data-testid="input-vocabulary-notes" /></div>
       {saveError && <p className="flex items-center gap-2 text-xs text-[hsl(var(--destructive))]" data-testid="status-save-error"><CircleAlert size={14} /> {saveError}</p>}
       <div className="flex justify-end gap-2 border-t border-[hsl(var(--border))] pt-5"><button type="button" className="button-secondary" onClick={onClose} data-testid="button-cancel-vocabulary">Cancel</button><button type="submit" className="button-primary" disabled={busy} data-testid="button-save-vocabulary">{busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {busy ? 'Saving...' : isNew ? 'Save word' : 'Save changes'}</button></div>
@@ -390,10 +395,11 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
   </div></div>;
 }
 
-type PracticeMode = 'recall' | 'meaning' | 'urdu' | 'cloze' | 'word' | 'spelling' | 'choice' | 'match' | 'sentence' | 'synonym' | 'correction';
+type PracticeMode = 'recall' | 'meaning' | 'urdu' | 'cloze' | 'word' | 'spelling' | 'choice' | 'match' | 'sentence' | 'synonym' | 'correction' | 'retrieval';
 
 const practiceModes: Array<{ value: PracticeMode; label: string; description: string }> = [
   { value: 'recall', label: 'Recall and reveal', description: 'Think first, then reveal the answer.' },
+  { value: 'retrieval', label: 'Answer your question', description: 'Answer your own scenario clue, then recall the word.' },
   { value: 'meaning', label: 'Write the meaning', description: 'Explain the word in English.' },
   { value: 'urdu', label: 'Write the Urdu meaning', description: 'Recall the Urdu meaning in Urdu script.' },
   { value: 'cloze', label: 'Fill in the blank', description: 'Complete the example sentence.' },
@@ -437,13 +443,15 @@ function getReviewPrompt(mode: PracticeMode, card: VocabularyItem) {
       return `Write a synonym or antonym for “${card.term}”.`;
     case 'correction':
       return `Rewrite this example in your own correct sentence: “${card.example}”`;
+    case 'retrieval':
+      return 'Which word does this question point to?';
     default:
       return 'What does this mean?';
   }
 }
 
 function getObjectiveAnswer(mode: PracticeMode, card: VocabularyItem) {
-  if (mode === 'word' || mode === 'spelling' || mode === 'cloze') return card.term;
+  if (mode === 'word' || mode === 'spelling' || mode === 'cloze' || mode === 'retrieval') return card.term;
   if (mode === 'choice' || mode === 'match') return card.meaning;
   return null;
 }
@@ -473,7 +481,9 @@ function Review() {
   const [answerCorrect, setAnswerCorrect] = useState<boolean | null>(null);
   const [lastRating, setLastRating] = useState<ReviewRatingType | null>(null);
   const [saveError, setSaveError] = useState('');
+  const [activeQuestion, setActiveQuestion] = useState('');
   const dueCards = useMemo(() => (list.data ?? []).filter(item => new Date(item.dueAt).getTime() <= Date.now()).sort((a, b) => +new Date(a.dueAt) - +new Date(b.dueAt)), [list.data]);
+  const retrievalEligible = useMemo(() => dueCards.filter(item => item.retrievalQuestions.length > 0).length, [dueCards]);
   const card = sessionCards[cardIndex];
   const choices = useMemo(() => {
     if (!card || (mode !== 'choice' && mode !== 'match')) return [];
@@ -488,11 +498,14 @@ function Review() {
     setAnswerCorrect(null);
     setLastRating(null);
     setSaveError('');
+    setActiveQuestion(mode === 'retrieval' && card?.retrievalQuestions.length ? card.retrievalQuestions[Math.floor(Math.random() * card.retrievalQuestions.length)] : '');
   }, [card?.id, mode]);
 
   const startSession = () => {
-    const amount = practiceCount === 'all' ? dueCards.length : Number(practiceCount);
-    setSessionCards(dueCards.slice(0, amount));
+    if (mode === 'retrieval' && retrievalEligible === 0) return;
+    const pool = mode === 'retrieval' ? dueCards.filter(item => item.retrievalQuestions.length > 0) : dueCards;
+    const amount = practiceCount === 'all' ? pool.length : Number(practiceCount);
+    setSessionCards(pool.slice(0, amount));
     setCardIndex(0);
     setSessionStarted(true);
   };
@@ -532,17 +545,18 @@ function Review() {
       <div className="card-surface p-6 md:p-8">
         <div className="flex items-start gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--accent)/.25)] text-[hsl(var(--primary))]"><Brain size={20} /></span><div><p className="eyebrow">Build a session</p><h2 className="serif mt-2 text-3xl">How do you want to practice?</h2><p className="mt-2 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{dueCards.length} {dueCards.length === 1 ? 'card is' : 'cards are'} ready today.</p></div></div>
         <div className="mt-7 grid gap-4 md:grid-cols-[1fr_180px]">
-          <div><label className="field-label" htmlFor="practice-mode">Practice style</label><select id="practice-mode" className="field" value={mode} onChange={event => setMode(event.target.value as PracticeMode)} data-testid="select-practice-mode">{practiceModes.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></div>
+          <div><label className="field-label" htmlFor="practice-mode">Practice style</label><select id="practice-mode" className="field" value={mode} onChange={event => setMode(event.target.value as PracticeMode)} data-testid="select-practice-mode">{practiceModes.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select>{mode === 'retrieval' && <p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">{retrievalEligible} of {dueCards.length} due {dueCards.length === 1 ? 'card has' : 'cards have'} saved recall questions.</p>}</div>
           <div><label className="field-label" htmlFor="practice-count">Words at a time</label><select id="practice-count" className="field" value={practiceCount} onChange={event => setPracticeCount(event.target.value)} data-testid="select-practice-count"><option value="5">5 words</option><option value="10">10 words</option><option value="20">20 words</option><option value="all">All due words</option></select></div>
         </div>
-        <button className="button-primary mt-7 w-full sm:w-auto" onClick={startSession} data-testid="button-start-practice"><Brain size={16} /> Start practice</button>
+        {mode === 'retrieval' && retrievalEligible === 0 && <p className="mt-3 text-xs text-[hsl(var(--destructive))]" data-testid="status-no-retrieval-questions">None of your due words have recall questions saved yet. Add some from the Library, or add them via Enrich.</p>}
+        <button className="button-primary mt-7 w-full sm:w-auto" onClick={startSession} disabled={mode === 'retrieval' && retrievalEligible === 0} data-testid="button-start-practice"><Brain size={16} /> Start practice</button>
       </div>
     </div> : !card ? <div className="mx-auto max-w-2xl text-center">
       <div className="card-surface p-8"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]"><Check size={25} /></span><p className="serif mt-5 text-3xl">Session complete.</p><p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">You practiced {sessionCards.length} {sessionCards.length === 1 ? 'word' : 'words'}. Come back later when the next interval is due.</p><button className="button-primary mt-6" onClick={() => setSessionStarted(false)} data-testid="button-new-practice"><RotateCcw size={15} /> Practice again</button></div>
     </div> : <div className="mx-auto max-w-2xl fade-in">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><span className="eyebrow">Card {cardIndex + 1} of {sessionCards.length}</span><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{practiceModes.find(option => option.value === mode)?.label}</p></div><button className="button-quiet" onClick={() => setSessionStarted(false)} data-testid="button-change-practice">Change session</button></div>
       <div className={`card-surface relative overflow-hidden p-6 transition md:p-7 ${answered ? 'border-[hsl(var(--primary)/.35)]' : ''}`}><div className="absolute left-0 top-0 h-1 w-full bg-[hsl(var(--accent))]" /><div className="flex items-center justify-between gap-3"><span className="tag" style={{ color: typeColors[card.type], background: `${typeColors[card.type]}18` }}>{typeLabels[card.type]}</span><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{formatDue(card.dueAt)}</span></div>
-        {mode === 'word' || mode === 'spelling' ? <div className="mt-10 text-center"><p className="eyebrow">Clue</p><p className="serif mt-4 text-2xl leading-snug">{card.meaning}</p></div> : <div className="mt-10 text-center"><h2 className="serif text-[clamp(40px,8vw,70px)] leading-none tracking-[-.045em]" data-testid="text-review-term">{card.term}</h2>{card.pronunciation && <p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{card.pronunciation}</p>}</div>}
+        {mode === 'word' || mode === 'spelling' ? <div className="mt-10 text-center"><p className="eyebrow">Clue</p><p className="serif mt-4 text-2xl leading-snug">{card.meaning}</p></div> : mode === 'retrieval' ? <div className="mt-10 text-center"><p className="eyebrow">Your question</p><p className="serif mt-4 text-2xl leading-snug" data-testid="text-review-retrieval-question">{activeQuestion || 'No recall questions saved for this word yet.'}</p></div> : <div className="mt-10 text-center"><h2 className="serif text-[clamp(40px,8vw,70px)] leading-none tracking-[-.045em]" data-testid="text-review-term">{card.term}</h2>{card.pronunciation && <p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{card.pronunciation}</p>}</div>}
         {!answered ? <div className="mx-auto mt-9 max-w-lg border-t border-[hsl(var(--border))] pt-7">
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{getReviewPrompt(mode, card)}</p>
           {mode === 'recall' ? <button className="button-primary mt-5" onClick={checkAnswer} data-testid="button-reveal-answer">Reveal answer <ChevronRight size={15} /></button> : mode === 'choice' || mode === 'match' ? <div className="mt-5 space-y-2">{choices.map(choice => <button className={`review-option w-full ${selectedOption === choice ? 'border-[hsl(var(--primary))] bg-[hsl(var(--secondary))]' : ''}`} key={choice} onClick={() => setSelectedOption(choice)} data-testid="button-choice-option">{choice}</button>)}<button className="button-primary mt-3" onClick={checkAnswer} disabled={!selectedOption} data-testid="button-check-answer">Check answer <Check size={15} /></button></div> : <div className="mt-5"><textarea className="field min-h-[90px] resize-y" dir={mode === 'urdu' ? 'rtl' : 'auto'} lang={mode === 'urdu' ? 'ur' : undefined} value={answer} onChange={event => setAnswer(event.target.value)} placeholder={mode === 'urdu' ? 'اردو میں جواب لکھیں' : 'Write your answer here...'} data-testid="input-review-answer" /><button className="button-primary mt-3" onClick={checkAnswer} disabled={!answer.trim()} data-testid="button-check-answer">Check answer <Check size={15} /></button></div>}

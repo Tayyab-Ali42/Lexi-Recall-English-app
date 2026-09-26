@@ -25,6 +25,7 @@ export interface VocabularyItem {
   /** @nullable */
   notes?: string | null;
   tags: string[];
+  retrievalQuestions: string[];
   intervalDays: number;
   easeFactor: number;
   repetitions: number;

@@ -54,6 +54,7 @@ export interface VocabularyItem {
   /** @nullable */
   notes?: string | null;
   tags: string[];
+  retrievalQuestions: string[];
   intervalDays: number;
   easeFactor: number;
   repetitions: number;
@@ -91,6 +92,7 @@ export interface VocabularyInput {
   /** @nullable */
   notes?: string | null;
   tags?: string[];
+  retrievalQuestions?: string[];
   source?: VocabularyInputSource;
 }
 
@@ -113,6 +115,7 @@ export interface VocabularyUpdate {
   /** @nullable */
   notes?: string | null;
   tags?: string[];
+  retrievalQuestions?: string[];
 }
 
 export type ReviewCard = VocabularyItem;
@@ -155,6 +158,7 @@ export interface Enrichment {
   /** @nullable */
   urduMeaning?: string | null;
   tags: string[];
+  retrievalQuestions?: string[];
   /** @nullable */
   memoryHook?: string | null;
 }

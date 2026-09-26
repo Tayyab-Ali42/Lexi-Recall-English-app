@@ -20,6 +20,7 @@ export const vocabularyTable = pgTable("vocabulary", {
   urduMeaning: text("urdu_meaning"),
   notes: text("notes"),
   tags: text("tags").array().notNull().default([]),
+  retrievalQuestions: text("retrieval_questions").array().notNull().default([]),
   intervalDays: doublePrecision("interval_days").notNull().default(0),
   easeFactor: doublePrecision("ease_factor").notNull().default(2.5),
   repetitions: integer("repetitions").notNull().default(0),

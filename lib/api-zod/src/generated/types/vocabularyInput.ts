@@ -27,5 +27,6 @@ export interface VocabularyInput {
   /** @nullable */
   notes?: string | null;
   tags?: string[];
+  retrievalQuestions?: string[];
   source?: VocabularyInputSource;
 }
