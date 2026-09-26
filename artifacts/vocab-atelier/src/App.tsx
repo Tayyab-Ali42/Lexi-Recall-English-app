@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
@@ -7,15 +7,12 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
-  Headphones,
   FileDown,
   Flame,
   FolderOpen,
   Gauge,
   LibraryBig,
   Loader2,
-  Mic,
-  Pause,
   Pencil,
   Plus,
   RotateCcw,
@@ -25,7 +22,7 @@ import {
   Target,
   Trash2,
   TrendingUp,
-  Volume2,
+  Upload,
   X,
 } from 'lucide-react';
 import {
@@ -84,6 +81,24 @@ function getEnrichmentErrorMessage(error: unknown) {
   return 'Enrichment is unavailable right now, but you can keep writing.';
 }
 
+type FreeDefinition = { meaning: string; partOfSpeech: string; pronunciation: string; example: string };
+
+async function fetchFreeDefinition(term: string): Promise<FreeDefinition | null> {
+  try {
+    const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(term)}`);
+    if (!response.ok) return null;
+    const entries = await response.json();
+    const entry = Array.isArray(entries) ? entries[0] : null;
+    const meaningBlock = entry?.meanings?.[0];
+    const definitionBlock = meaningBlock?.definitions?.[0];
+    if (!definitionBlock?.definition) return null;
+    const phonetic = entry?.phonetic || entry?.phonetics?.find((item: { text?: string }) => item.text)?.text || '';
+    return { meaning: definitionBlock.definition, partOfSpeech: meaningBlock?.partOfSpeech || '', pronunciation: phonetic, example: definitionBlock.example || '' };
+  } catch {
+    return null;
+  }
+}
+
 function formatDue(value?: string | null) {
   if (!value) return 'No date';
   const date = new Date(value);
@@ -112,9 +127,126 @@ function NavItem({ href, icon, label }: { href: string; icon: ReactNode; label: 
   return <Link href={href} className={`nav-link ${active ? 'active' : ''}`} data-testid={`link-nav-${label.toLowerCase()}`}>{icon}<span>{label}</span></Link>;
 }
 
+type AuthUser = { id: string; email: string };
+
+async function authFetch(path: string, init?: RequestInit) {
+  return fetch(`/api${path}`, { ...init, credentials: 'include', headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+}
+
+function useAuthController() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [status, setStatus] = useState<'checking' | 'ready'>('checking');
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    authFetch('/auth/me').then(async response => { if (response.ok) setUser(await response.json()); }).catch(() => {}).finally(() => setStatus('ready'));
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    const response = await authFetch('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || 'Could not log in.');
+    setUser(data);
+  };
+
+  const signup = async (email: string, password: string) => {
+    const response = await authFetch('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || 'Could not create your account.');
+    setUser(data);
+  };
+
+  const logout = async () => {
+    await authFetch('/auth/logout', { method: 'POST' });
+    setUser(null);
+    qc.clear();
+  };
+
+  return { user, status, login, signup, logout };
+}
+
+const AuthContext = createContext<ReturnType<typeof useAuthController> | null>(null);
+
+function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
+}
+
+function AuthProvider({ children }: { children: ReactNode }) {
+  const controller = useAuthController();
+  return <AuthContext.Provider value={controller}>{children}</AuthContext.Provider>;
+}
+
+function AuthScreen() {
+  const { login, signup } = useAuth();
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setPending(true);
+    try {
+      if (mode === 'login') await login(email, password); else await signup(email, password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return <div className="flex min-h-[100dvh] items-center justify-center p-6">
+    <div className="card-surface w-full max-w-sm p-7 md:p-9">
+      <p className="eyebrow">Vocab Atelier</p>
+      <h1 className="serif mt-2 text-2xl">{mode === 'login' ? 'Welcome back.' : 'Start your shelf.'}</h1>
+      <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">{mode === 'login' ? 'Log in to reach your words.' : 'A free account keeps your vocabulary private to you.'}</p>
+      <form className="mt-6 space-y-4" onSubmit={submit}>
+        <div><label className="field-label" htmlFor="auth-email">Email</label><input id="auth-email" type="email" autoComplete="email" className="field" required value={email} onChange={e => setEmail(e.target.value)} data-testid="input-auth-email" /></div>
+        <div><label className="field-label" htmlFor="auth-password">Password</label><input id="auth-password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} className="field" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} data-testid="input-auth-password" /></div>
+        {error && <p className="text-xs text-[hsl(var(--destructive))]" data-testid="status-auth-error">{error}</p>}
+        <button type="submit" className="button-primary w-full justify-center" disabled={pending} data-testid="button-auth-submit">{pending && <Loader2 size={15} className="animate-spin" />} {mode === 'login' ? 'Log in' : 'Create account'}</button>
+      </form>
+      <button type="button" className="button-quiet mt-5 w-full justify-center" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); }} data-testid="button-auth-toggle">{mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}</button>
+    </div>
+  </div>;
+}
+
+function AuthGate({ children }: { children: ReactNode }) {
+  const { user, status } = useAuth();
+  if (status === 'checking') return <div className="flex min-h-[100dvh] items-center justify-center"><Loader2 size={22} className="animate-spin text-[hsl(var(--primary))]" /></div>;
+  if (!user) return <AuthScreen />;
+  return <>{children}</>;
+}
+
+function showToast(message: string) {
+  window.dispatchEvent(new CustomEvent('app-toast', { detail: message }));
+}
+
+function ToastHost() {
+  const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail;
+      const id = Date.now() + Math.random();
+      setToasts(prev => [...prev, { id, message }]);
+      setTimeout(() => setToasts(prev => prev.filter(toast => toast.id !== id)), 2600);
+    };
+    window.addEventListener('app-toast', handler);
+    return () => window.removeEventListener('app-toast', handler);
+  }, []);
+  if (!toasts.length) return null;
+  return <div className="fixed bottom-5 right-5 z-[200] flex flex-col gap-2">{toasts.map(toast => <div key={toast.id} className="rounded-xl bg-[hsl(var(--primary))] px-4 py-3 text-sm font-medium text-[hsl(var(--primary-foreground))] shadow-lg" role="status" data-testid="toast-message">{toast.message}</div>)}</div>;
+}
+
 function Shell({ children }: { children: ReactNode }) {
+  const { user, logout } = useAuth();
   return (
     <div className="app-shell">
+      <ToastHost />
       <div className="grain" />
       <aside className="sidebar">
         <Logo />
@@ -123,7 +255,6 @@ function Shell({ children }: { children: ReactNode }) {
           <NavItem href="/" icon={<Gauge size={17} />} label="Today" />
           <NavItem href="/challenge" icon={<CalendarDays size={17} />} label="Challenge" />
           <NavItem href="/library" icon={<LibraryBig size={17} />} label="Library" />
-          <NavItem href="/shadowing" icon={<Headphones size={17} />} label="Shadowing" />
           <NavItem href="/review" icon={<Brain size={17} />} label="Review" />
           <NavItem href="/insights" icon={<TrendingUp size={17} />} label="Insights" />
         </div>
@@ -136,8 +267,8 @@ function Shell({ children }: { children: ReactNode }) {
           <p className="mt-3 text-[11px] leading-relaxed text-[hsl(var(--sidebar-foreground)/.5)]">Keep showing up. Your future self will have more to say.</p>
         </div>
         <div className="mt-5 flex items-center gap-3 px-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[hsl(var(--sidebar-primary)/.18)] text-xs font-bold text-[hsl(var(--sidebar-primary))]">AM</div>
-          <div><p className="text-xs text-[hsl(var(--sidebar-foreground)/.85)]">Your atelier</p><p className="mono text-[9px] text-[hsl(var(--sidebar-foreground)/.4)]">PERSONAL SPACE</p></div>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--sidebar-primary)/.18)] text-xs font-bold text-[hsl(var(--sidebar-primary))]">{(user?.email ?? '?').slice(0, 1).toUpperCase()}</div>
+          <div className="min-w-0 flex-1"><p className="truncate text-xs text-[hsl(var(--sidebar-foreground)/.85)]" data-testid="text-current-user">{user?.email}</p><button type="button" className="mono text-[9px] text-[hsl(var(--sidebar-foreground)/.5)] underline-offset-2 hover:underline" onClick={logout} data-testid="button-logout">LOG OUT</button></div>
         </div>
       </aside>
       <main className="main-area">{children}</main>
@@ -145,7 +276,6 @@ function Shell({ children }: { children: ReactNode }) {
         <NavItem href="/" icon={<Gauge />} label="Today" />
         <NavItem href="/challenge" icon={<CalendarDays />} label="Challenge" />
         <NavItem href="/library" icon={<LibraryBig />} label="Library" />
-        <NavItem href="/shadowing" icon={<Headphones />} label="Shadowing" />
         <NavItem href="/review" icon={<Brain />} label="Review" />
         <NavItem href="/insights" icon={<TrendingUp />} label="Insights" />
       </nav>
@@ -231,7 +361,7 @@ function DailyChallenge({ fullPage = false }: { fullPage?: boolean }) {
           {!revealed && <button className="button-primary" onClick={() => setRevealed(true)} data-testid="button-reveal-challenge"><Sparkles size={15} /> Reveal the word</button>}
           {revealed && !completed && <button className="button-primary" onClick={finish} data-testid="button-complete-challenge"><Check size={15} /> Mark challenge complete</button>}
           {completed && <span className="flex items-center gap-2 text-sm font-semibold text-[hsl(var(--primary))]"><Check size={16} /> Your daily practice is logged.</span>}
-          <Link href="/shadowing" className="button-quiet"><Headphones size={14} /> Say it aloud</Link>
+          
         </div>
       </div>
     </div>;
@@ -281,11 +411,130 @@ function VocabPreview({ item, index = 0 }: { item: VocabularyItem; index?: numbe
   return <Link href="/library" className={`card-surface hover-lift flex min-w-0 items-center gap-3 p-4 fade-in delay-${Math.min(index + 1, 4)}`} data-testid={`card-recent-${item.id}`}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold" style={{ background: `${typeColors[item.type]}18`, color: typeColors[item.type] }}>{item.term.slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1 overflow-hidden"><span className="flex min-w-0 items-center gap-2"><span className="min-w-0 truncate text-sm font-semibold">{item.term}</span><span className="tag shrink-0">{typeLabels[item.type]}</span></span><span className="mt-1 block truncate text-xs text-[hsl(var(--muted-foreground))]">{item.meaning}</span></span><ChevronRight size={16} className="shrink-0 text-[hsl(var(--muted-foreground))]" /></Link>;
 }
 
+function VocabularyDetailModal({ item, onClose, onEdit }: { item: VocabularyItem; onClose: () => void; onEdit: () => void }) {
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title" data-testid="dialog-vocabulary-detail">
+    <div className="mb-6 flex items-start justify-between"><div><span className="tag" style={{ color: typeColors[item.type], background: `${typeColors[item.type]}18` }}>{typeLabels[item.type]}</span><h2 id="detail-modal-title" className="serif mt-3 text-4xl">{item.term}</h2>{item.pronunciation && <p className="mono mt-2 text-xs text-[hsl(var(--muted-foreground))]">{item.pronunciation}</p>}</div><button className="button-quiet" onClick={onClose} aria-label="Close" data-testid="button-close-detail"><X size={18} /></button></div>
+    <div className="space-y-5">
+      <div><p className="eyebrow mb-1">Meaning</p><p className="text-sm leading-relaxed">{item.meaning}</p></div>
+      {item.urduMeaning && <div><p className="eyebrow mb-1">Urdu meaning</p><p className="text-right text-sm leading-relaxed" dir="rtl" lang="ur">{item.urduMeaning}</p></div>}
+      {item.translation && <div><p className="eyebrow mb-1">Translation</p><p className="text-sm leading-relaxed">{item.translation}</p></div>}
+      <div><p className="eyebrow mb-1">In context</p><p className="text-sm italic leading-relaxed text-[hsl(var(--muted-foreground))]">“{item.example}”</p></div>
+      {item.retrievalQuestions?.length > 0 && <div><p className="eyebrow mb-1">Recall questions</p><ul className="space-y-1.5">{item.retrievalQuestions.map((question, index) => <li key={index} className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{question}</li>)}</ul></div>}
+      {item.notes && <div><p className="eyebrow mb-1">Notes</p><p className="text-sm leading-relaxed">{item.notes}</p></div>}
+      {item.tags.length > 0 && <div className="flex flex-wrap gap-1.5">{item.tags.map(tag => <span key={tag} className="tag">#{tag}</span>)}</div>}
+      <div className="flex flex-wrap gap-4 border-t border-[hsl(var(--border))] pt-4 text-xs text-[hsl(var(--muted-foreground))]"><span>{item.repetitions ? `${item.intervalDays} day interval` : 'New card'}</span><span>{formatDue(item.dueAt)}</span></div>
+    </div>
+    <div className="mt-7 flex justify-end gap-2"><button className="button-secondary" onClick={onClose} data-testid="button-close-detail-secondary">Close</button><button className="button-primary" onClick={onEdit} data-testid="button-edit-from-detail"><Pencil size={15} /> Edit</button></div>
+  </div></div>;
+}
+
+type ImportStage = 'choose' | 'reviewing' | 'importing' | 'done';
+
+function ImportModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const create = useCreateVocabulary();
+  const enrich = useEnrichVocabulary();
+  const [stage, setStage] = useState<ImportStage>('choose');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [candidates, setCandidates] = useState<string[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [results, setResults] = useState<{ added: number; skipped: string[] }>({ added: 0, skipped: [] });
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFile = async (file: File) => {
+    setError('');
+    setBusy(true);
+    const body = new FormData();
+    body.append('file', file);
+    try {
+      const response = await fetch('/api/import/extract', { method: 'POST', body, credentials: 'include' });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || 'Could not read that file.');
+      const found: string[] = data?.candidates ?? [];
+      if (!found.length) { setError('No new candidate words were found in that file.'); setBusy(false); return; }
+      setCandidates(found);
+      setSelected(new Set(found));
+      setStage('reviewing');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not read that file.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = (word: string) => setSelected(prev => { const next = new Set(prev); if (next.has(word)) next.delete(word); else next.add(word); return next; });
+
+  const startImport = async () => {
+    const words = candidates.filter(word => selected.has(word));
+    if (!words.length) return;
+    setStage('importing');
+    setProgress({ done: 0, total: words.length });
+    let added = 0;
+    const skipped: string[] = [];
+    for (const word of words) {
+      let filled = await fetchFreeDefinition(word);
+      if (!filled) {
+        try {
+          const data = await enrich.mutateAsync({ data: { term: word, type: 'word', context: null } });
+          filled = { meaning: data.meaning, partOfSpeech: data.partOfSpeech ?? '', pronunciation: data.pronunciation ?? '', example: data.example };
+        } catch {
+          filled = null;
+        }
+      }
+      if (!filled?.meaning || !filled.example) {
+        skipped.push(word);
+      } else {
+        try {
+          await create.mutateAsync({ data: { term: word, type: 'word', meaning: filled.meaning, partOfSpeech: filled.partOfSpeech || null, pronunciation: filled.pronunciation || null, example: filled.example, tags: [], retrievalQuestions: [], source: 'ai' } });
+          added += 1;
+        } catch {
+          skipped.push(word);
+        }
+      }
+      setProgress(prev => ({ ...prev, done: prev.done + 1 }));
+    }
+    qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    setResults({ added, skipped });
+    setStage('done');
+    if (added) showToast(`${added} word${added === 1 ? '' : 's'} imported.`);
+  };
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && stage !== 'importing') onClose(); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="import-modal-title" data-testid="dialog-import">
+    <div className="mb-7 flex items-start justify-between"><div><p className="eyebrow mb-2">Bring in words</p><h2 id="import-modal-title" className="serif text-3xl">Import vocabulary.</h2></div>{stage !== 'importing' && <button className="button-quiet" onClick={onClose} data-testid="button-close-import"><X size={18} /></button>}</div>
+
+    {stage === 'choose' && <div>
+      <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Upload a PDF or a plain text file. We'll pull out candidate words you haven't saved yet, so you can pick which ones actually matter to you before anything is added.</p>
+      <button type="button" className="button-primary mt-6 w-full justify-center" onClick={() => fileInputRef.current?.click()} disabled={busy} data-testid="button-choose-file">{busy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} {busy ? 'Reading file...' : 'Choose a file'}</button>
+      <input ref={fileInputRef} type="file" accept=".pdf,.txt,text/plain,application/pdf" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) handleFile(file); event.target.value = ''; }} data-testid="input-import-file" />
+      {error && <p className="mt-3 text-xs text-[hsl(var(--destructive))]" data-testid="status-import-error">{error}</p>}
+    </div>}
+
+    {stage === 'reviewing' && <div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-[hsl(var(--muted-foreground))]">{selected.size} of {candidates.length} selected</p><div className="flex gap-2"><button type="button" className="button-quiet" onClick={() => setSelected(new Set(candidates))} data-testid="button-select-all">Select all</button><button type="button" className="button-quiet" onClick={() => setSelected(new Set())} data-testid="button-select-none">Select none</button></div></div>
+      <div className="mt-4 max-h-[45vh] overflow-auto rounded-2xl border border-[hsl(var(--border))] p-3"><div className="flex flex-wrap gap-2">{candidates.map(word => <button key={word} type="button" onClick={() => toggle(word)} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${selected.has(word) ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'}`} data-testid={`button-candidate-${word}`}>{word}</button>)}</div></div>
+      <div className="mt-6 flex justify-end gap-2"><button className="button-secondary" onClick={onClose} data-testid="button-cancel-import">Cancel</button><button className="button-primary" onClick={startImport} disabled={!selected.size} data-testid="button-start-import">Add {selected.size} word{selected.size === 1 ? '' : 's'}</button></div>
+    </div>}
+
+    {stage === 'importing' && <div className="py-10 text-center"><Loader2 size={22} className="mx-auto animate-spin text-[hsl(var(--primary))]" /><p className="mt-4 text-sm text-[hsl(var(--muted-foreground))]" data-testid="status-import-progress">Importing {progress.done} of {progress.total}...</p></div>}
+
+    {stage === 'done' && <div className="py-4 text-center">
+      <p className="serif text-2xl">{results.added} word{results.added === 1 ? '' : 's'} added.</p>
+      {results.skipped.length > 0 && <p className="mt-3 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Couldn't find a definition for: {results.skipped.join(', ')}</p>}
+      <button className="button-primary mt-7" onClick={onClose} data-testid="button-finish-import">Done</button>
+    </div>}
+  </div></div>;
+}
+
 function Library() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | VocabularyType>('all');
   const [category, setCategory] = useState('all');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const params = useMemo(() => ({ search: search || undefined, type: filter === 'all' ? undefined : filter }), [search, filter]);
   const list = useListVocabulary(params);
   const exportList = useListVocabulary();
@@ -300,7 +549,7 @@ function Library() {
     window.print();
   };
   return <div className="content-wrap">
-    <PageHeader eyebrow="The collection" title="Your language, gathered." description="A living shelf of words, phrases, idioms, and verbs you decided were worth keeping." action={<div className="flex flex-wrap justify-end gap-2"><button className="button-secondary" onClick={exportWords} disabled={exportList.isLoading || exportList.isError || !exportList.data?.length} data-testid="button-export-vocabulary"><FileDown size={16} /> {exportList.isLoading ? 'Preparing...' : 'Export PDF'}</button><button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-vocabulary"><Plus size={16} /> Add vocabulary</button></div>} />
+    <PageHeader eyebrow="The collection" title="Your language, gathered." description="A living shelf of words, phrases, idioms, and verbs you decided were worth keeping." action={<div className="flex flex-wrap justify-end gap-2"><button className="button-secondary" onClick={() => setImporting(true)} data-testid="button-import-vocabulary"><Upload size={16} /> Import</button><button className="button-secondary" onClick={exportWords} disabled={exportList.isLoading || exportList.isError || !exportList.data?.length} data-testid="button-export-vocabulary"><FileDown size={16} /> {exportList.isLoading ? 'Preparing...' : 'Export PDF'}</button><button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-vocabulary"><Plus size={16} /> Add vocabulary</button></div>} />
     <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between fade-in delay-1">
       <div className="relative w-full md:max-w-sm"><Search size={16} className="absolute left-3.5 top-3.5 text-[hsl(var(--muted-foreground))]" /><input className="field pl-10" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your shelf..." data-testid="input-search-vocabulary" /></div>
       <div className="flex gap-1.5 overflow-auto pb-1">{(['all', ...types] as const).map((type) => <button key={type} onClick={() => setFilter(type)} className={`rounded-full px-3.5 py-2 text-xs font-semibold transition ${filter === type ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`} data-testid={`button-filter-${type}`}>{type === 'all' ? 'All words' : typeLabels[type]}</button>)}</div>
@@ -309,9 +558,11 @@ function Library() {
        <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]"><Tag size={15} /></span><div><p className="eyebrow">Thematic shelves</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Use tags as categories to make your words easier to revisit.</p></div></div><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{categories.length} {categories.length === 1 ? 'theme' : 'themes'}</span></div>
        {categories.length ? <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => setCategory('all')} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${category === 'all' ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'}`} data-testid="button-category-all">All themes</button>{categories.map(theme => <button key={theme} onClick={() => setCategory(theme)} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${category === theme ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'}`} data-testid={`button-category-${theme}`}>#{theme} <span className="mono ml-1 opacity-70">{allItems.filter(item => item.tags.includes(theme)).length}</span></button>)}</div> : <p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">Add themes like travel, work, or conversation in a word's Tags field.</p>}
      </section>
-    {list.isLoading ? <LoadingState rows={5} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : items.length === 0 ? <EmptyState title={search ? 'Nothing matched.' : 'The shelf is still open.'} copy={search ? 'Try a shorter search or another spelling.' : 'Collect words from conversations, books, and the odd sentence that stays with you.'} action={!search ? <button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-empty"><Plus size={15} /> Save a word</button> : undefined} /> : <div className="space-y-3">{items.map((item, index) => <LibraryRow key={item.id} item={item} index={index} onEdit={() => setEditingId(item.id)} onDelete={() => handleDelete(item.id, item.term)} deleting={deleteMutation.isPending} />)}</div>}
+    {list.isLoading ? <LoadingState rows={5} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : items.length === 0 ? <EmptyState title={search ? 'Nothing matched.' : 'The shelf is still open.'} copy={search ? 'Try a shorter search or another spelling.' : 'Collect words from conversations, books, and the odd sentence that stays with you.'} action={!search ? <button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-empty"><Plus size={15} /> Save a word</button> : undefined} /> : <div className="space-y-3">{items.map((item, index) => <LibraryRow key={item.id} item={item} index={index} onView={() => setViewingId(item.id)} onEdit={() => setEditingId(item.id)} onDelete={() => handleDelete(item.id, item.term)} deleting={deleteMutation.isPending} />)}</div>}
      {exportList.data?.length ? <PrintExport items={exportList.data} /> : null}
     {editingId && <VocabularyModal editingId={editingId === 'new' ? null : editingId} onClose={() => setEditingId(null)} />}
+    {viewingId && (() => { const item = allItems.find(entry => entry.id === viewingId); return item ? <VocabularyDetailModal item={item} onClose={() => setViewingId(null)} onEdit={() => { setViewingId(null); setEditingId(item.id); }} /> : null; })()}
+    {importing && <ImportModal onClose={() => setImporting(false)} />}
   </div>;
 }
 
@@ -342,9 +593,9 @@ function PrintExport({ items }: { items: VocabularyItem[] }) {
   </section>;
 }
 
-function LibraryRow({ item, index, onEdit, onDelete, deleting }: { item: VocabularyItem; index: number; onEdit: () => void; onDelete: () => void; deleting: boolean }) {
+function LibraryRow({ item, index, onView, onEdit, onDelete, deleting }: { item: VocabularyItem; index: number; onView: () => void; onEdit: () => void; onDelete: () => void; deleting: boolean }) {
   return <div className={`card-surface hover-lift flex flex-col gap-4 p-5 fade-in delay-${Math.min(index + 1, 4)} md:flex-row md:items-center`} data-testid={`row-vocabulary-${item.id}`}>
-    <div className="flex min-w-0 flex-1 items-center gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold" style={{ background: `${typeColors[item.type]}18`, color: typeColors[item.type] }}>{item.term.slice(0, 1).toUpperCase()}</span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold">{item.term}</h3><span className="tag">{typeLabels[item.type]}</span>{item.source === 'ai' && <span className="tag bg-[hsl(var(--accent)/.25)]"><Sparkles size={10} className="mr-1" /> enriched</span>}</div><p className="mt-1 truncate text-sm text-[hsl(var(--muted-foreground))]">{item.meaning}</p><div className="mt-2 flex flex-wrap gap-1">{item.tags.slice(0, 3).map(tag => <span key={tag} className="mono text-[9px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]">#{tag}</span>)}</div></div></div>
+    <button type="button" className="flex min-w-0 flex-1 items-center gap-4 text-left" onClick={onView} data-testid={`button-view-${item.id}`}><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold" style={{ background: `${typeColors[item.type]}18`, color: typeColors[item.type] }}>{item.term.slice(0, 1).toUpperCase()}</span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold">{item.term}</h3><span className="tag">{typeLabels[item.type]}</span>{item.source === 'ai' && <span className="tag bg-[hsl(var(--accent)/.25)]"><Sparkles size={10} className="mr-1" /> enriched</span>}</div><p className="mt-1 truncate text-sm text-[hsl(var(--muted-foreground))]">{item.meaning}</p><div className="mt-2 flex flex-wrap gap-1">{item.tags.slice(0, 3).map(tag => <span key={tag} className="mono text-[9px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]">#{tag}</span>)}</div></div></button>
     <div className="flex items-center justify-between gap-3 md:justify-end"><div className="mr-2 text-right"><p className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{item.repetitions ? `${item.intervalDays} day interval` : 'New card'}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{formatDue(item.dueAt)}</p></div><button className="button-quiet" onClick={onEdit} data-testid={`button-edit-${item.id}`}><Pencil size={15} /> <span className="hidden sm:inline">Edit</span></button><button className="button-quiet text-[hsl(var(--destructive))]" onClick={onDelete} disabled={deleting} data-testid={`button-delete-${item.id}`}><Trash2 size={15} /></button></div>
   </div>;
 }
@@ -368,20 +619,30 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
   const addQuestion = () => setForm(prev => ({ ...prev, retrievalQuestions: [...prev.retrievalQuestions, ''] }));
   const removeQuestion = (index: number) => setForm(prev => ({ ...prev, retrievalQuestions: prev.retrievalQuestions.length > 1 ? prev.retrievalQuestions.filter((_, questionIndex) => questionIndex !== index) : [''] }));
    const applyEnrichment = () => { if (!form.term.trim()) return; enrich.mutate({ data: { term: form.term.trim(), type: form.type as VocabularyType, context: context || null } }, { onSuccess: (data) => setForm(prev => ({ ...prev, term: data.term, meaning: data.meaning, partOfSpeech: data.partOfSpeech ?? '', pronunciation: data.pronunciation ?? '', example: data.example, translation: data.translation ?? '', urduMeaning: data.urduMeaning ?? '', tags: data.tags.join(', '), retrievalQuestions: data.retrievalQuestions?.length ? data.retrievalQuestions : prev.retrievalQuestions, notes: data.memoryHook ? `Memory hook: ${data.memoryHook}` : prev.notes })) }); };
+  const [freeLookupState, setFreeLookupState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const lookupFree = async () => {
+    const term = form.term.trim();
+    if (!term) return;
+    setFreeLookupState('loading');
+    const found = await fetchFreeDefinition(term);
+    if (!found) { setFreeLookupState('error'); return; }
+    setForm(prev => ({ ...prev, meaning: found.meaning || prev.meaning, partOfSpeech: found.partOfSpeech || prev.partOfSpeech, pronunciation: found.pronunciation || prev.pronunciation, example: found.example || prev.example }));
+    setFreeLookupState('idle');
+  };
   const save = (event: FormEvent) => {
     event.preventDefault();
     if (!form.term.trim() || !form.meaning.trim() || !form.example.trim()) { setSaveError('Term, meaning, and example are required.'); return; }
     setSaveError('');
      const payload: VocabularyInput = { term: form.term.trim(), type: form.type as VocabularyType, meaning: form.meaning.trim(), partOfSpeech: form.partOfSpeech.trim() || null, pronunciation: form.pronunciation.trim() || null, example: form.example.trim(), translation: form.translation.trim() || null, urduMeaning: form.urduMeaning.trim() || null, notes: form.notes.trim() || null, tags: form.tags.split(',').map(tag => tag.trim()).filter(Boolean), retrievalQuestions: form.retrievalQuestions.map(question => question.trim()).filter(Boolean), source: enrich.data ? 'ai' : 'manual' };
-    if (editingId) update.mutate({ id: editingId, data: payload }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); qc.invalidateQueries({ queryKey: getGetVocabularyQueryKey(editingId) }); onClose(); }, onError: () => setSaveError('That edit could not be saved. Try again.') });
-    else create.mutate({ data: payload }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); onClose(); }, onError: () => setSaveError('That word could not be saved. Try again.') });
+    if (editingId) update.mutate({ id: editingId, data: payload }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); qc.invalidateQueries({ queryKey: getGetVocabularyQueryKey(editingId) }); showToast(`"${payload.term}" updated.`); onClose(); }, onError: () => setSaveError('That edit could not be saved. Try again.') });
+    else create.mutate({ data: payload }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); showToast(`"${payload.term}" saved.`); onClose(); }, onError: () => setSaveError('That word could not be saved. Try again.') });
   };
   const busy = create.isPending || update.isPending;
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="vocab-modal-title" data-testid="dialog-vocabulary">
     <div className="mb-7 flex items-start justify-between"><div><p className="eyebrow mb-2">{isNew ? 'Add to the collection' : 'Refine this entry'}</p><h2 id="vocab-modal-title" className="serif text-3xl">{isNew ? 'Save a new word.' : 'Edit your note.'}</h2></div><button className="button-quiet" onClick={onClose} data-testid="button-close-vocabulary"><X size={18} /></button></div>
     {itemQuery.isLoading && editingId ? <LoadingState rows={2} /> : <form onSubmit={save} className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-[1fr_180px]"><div><label className="field-label" htmlFor="vocab-term">Term</label><input id="vocab-term" className="field" autoFocus value={form.term} onChange={e => set('term', e.target.value)} placeholder="e.g. serendipity" data-testid="input-vocabulary-term" /></div><div><label className="field-label" htmlFor="vocab-type">Kind</label><select id="vocab-type" className="field" value={form.type} onChange={e => set('type', e.target.value)} data-testid="select-vocabulary-type">{types.map(type => <option value={type} key={type}>{typeLabels[type]}</option>)}</select></div></div>
-       <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary)/.45)] p-4"><div className="flex items-center gap-2"><Sparkles size={15} className="text-[hsl(var(--primary))]" /><p className="text-xs font-bold">Let the atelier help</p><span className="tag ml-auto">optional</span></div><div className="mt-3 flex gap-2"><input className="field flex-1 bg-[hsl(var(--card))]" value={context} onChange={e => setContext(e.target.value)} placeholder="Add a context or leave blank" data-testid="input-enrichment-context" /><button type="button" className="button-secondary shrink-0" onClick={applyEnrichment} disabled={enrich.isPending || !form.term.trim()} data-testid="button-enrich-vocabulary">{enrich.isPending ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} {enrich.isPending ? 'Thinking...' : 'Enrich'}</button></div>{enrich.isError && <p className="mt-2 text-xs text-[hsl(var(--destructive))]" data-testid="status-enrichment-error">{getEnrichmentErrorMessage(enrich.error)}</p>}</div>
+       <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary)/.45)] p-4"><div className="flex items-center gap-2"><Sparkles size={15} className="text-[hsl(var(--primary))]" /><p className="text-xs font-bold">Let the atelier help</p><span className="tag ml-auto">optional</span></div><div className="mt-3 flex flex-wrap gap-2"><input className="field flex-1 bg-[hsl(var(--card))]" value={context} onChange={e => setContext(e.target.value)} placeholder="Add a context or leave blank" data-testid="input-enrichment-context" /><button type="button" className="button-secondary shrink-0" onClick={lookupFree} disabled={freeLookupState === 'loading' || !form.term.trim()} data-testid="button-free-lookup">{freeLookupState === 'loading' ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />} {freeLookupState === 'loading' ? 'Looking up...' : 'Free lookup'}</button><button type="button" className="button-secondary shrink-0" onClick={applyEnrichment} disabled={enrich.isPending || !form.term.trim()} data-testid="button-enrich-vocabulary">{enrich.isPending ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} {enrich.isPending ? 'Thinking...' : 'Enrich'}</button></div>{freeLookupState === 'error' && <p className="mt-2 text-xs text-[hsl(var(--destructive))]" data-testid="status-free-lookup-error">No free dictionary entry found for that term. Try Enrich instead.</p>}{enrich.isError && <p className="mt-2 text-xs text-[hsl(var(--destructive))]" data-testid="status-enrichment-error">{getEnrichmentErrorMessage(enrich.error)}</p>}</div>
       <div><label className="field-label" htmlFor="vocab-meaning">Meaning</label><textarea id="vocab-meaning" className="field min-h-[74px] resize-y" value={form.meaning} onChange={e => set('meaning', e.target.value)} placeholder="What does it mean, in your own words?" data-testid="input-vocabulary-meaning" /></div>
        <div><label className="field-label" htmlFor="vocab-urdu-meaning">Urdu meaning</label><textarea id="vocab-urdu-meaning" className="field min-h-[74px] resize-y text-right" dir="rtl" lang="ur" value={form.urduMeaning} onChange={e => set('urduMeaning', e.target.value)} placeholder="اردو میں معنی لکھیں" data-testid="input-vocabulary-urdu-meaning" /></div>
       <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="vocab-pos">Part of speech</label><input id="vocab-pos" className="field" value={form.partOfSpeech} onChange={e => set('partOfSpeech', e.target.value)} placeholder="noun, verb..." data-testid="input-vocabulary-pos" /></div><div><label className="field-label" htmlFor="vocab-pronunciation">Pronunciation</label><input id="vocab-pronunciation" className="field" value={form.pronunciation} onChange={e => set('pronunciation', e.target.value)} placeholder="/ˌser.ənˈdip.ə.ti/" data-testid="input-vocabulary-pronunciation" /></div></div>
@@ -574,147 +835,6 @@ function Review() {
   </div>;
 }
 
-function Shadowing() {
-  const list = useListVocabulary();
-  const items = list.data ?? [];
-  const [selectedId, setSelectedId] = useState('');
-  const [recordings, setRecordings] = useState<Record<string, string>>({});
-  const [isRecording, setIsRecording] = useState(false);
-  const [nativePlaying, setNativePlaying] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [status, setStatus] = useState('');
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<number | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const selected = items.find(item => item.id === selectedId) ?? items[0];
-  const recording = selected ? recordings[selected.id] : undefined;
-
-  useEffect(() => {
-    if (!selectedId && items[0]) setSelectedId(items[0].id);
-  }, [items, selectedId]);
-
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem('vocab-atelier-shadowing-recordings');
-      if (saved) setRecordings(JSON.parse(saved) as Record<string, string>);
-    } catch {
-      setRecordings({});
-    }
-    return () => {
-      window.speechSynthesis?.cancel();
-      if (timerRef.current) window.clearInterval(timerRef.current);
-      streamRef.current?.getTracks().forEach(track => track.stop());
-    };
-  }, []);
-
-  const speakNative = () => {
-    if (!selected || !window.speechSynthesis) {
-      setStatus('Native playback is not available in this browser.');
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(selected.term);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.82;
-    utterance.onstart = () => setNativePlaying(true);
-    utterance.onend = () => setNativePlaying(false);
-    utterance.onerror = () => setNativePlaying(false);
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const stopRecording = () => {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-  };
-
-  const startRecording = async () => {
-    if (!selected) return;
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setStatus('Recording is not supported in this browser. Try the latest Chrome, Safari, or Firefox.');
-      return;
-    }
-    try {
-      window.speechSynthesis?.cancel();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      streamRef.current = stream;
-      recorderRef.current = recorder;
-      chunksRef.current = [];
-      recorder.ondataavailable = event => {
-        if (event.data.size) chunksRef.current.push(event.data);
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const dataUrl = String(reader.result);
-          setRecordings(previous => {
-            const next = { ...previous, [selected.id]: dataUrl };
-            try {
-              window.localStorage.setItem('vocab-atelier-shadowing-recordings', JSON.stringify(next));
-            } catch {
-              setStatus('Your take is ready for playback, but this browser could not save it locally.');
-            }
-            return next;
-          });
-          setStatus('Your take is ready. Compare it with the native playback below.');
-        };
-        reader.readAsDataURL(blob);
-        stream.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-        recorderRef.current = null;
-        setIsRecording(false);
-        if (timerRef.current) window.clearInterval(timerRef.current);
-      };
-      recorder.start();
-      setElapsed(0);
-      setIsRecording(true);
-      setStatus('Recording... say the word naturally, then stop when you finish.');
-      timerRef.current = window.setInterval(() => setElapsed(value => value + 1), 1000);
-    } catch {
-      setStatus('Microphone access was not granted. Allow microphone access and try again.');
-    }
-  };
-
-  const clearTake = () => {
-    if (!selected) return;
-    setRecordings(previous => {
-      const next = { ...previous };
-      delete next[selected.id];
-      try {
-        window.localStorage.setItem('vocab-atelier-shadowing-recordings', JSON.stringify(next));
-      } catch {
-        // The in-memory state is still cleared.
-      }
-      return next;
-    });
-    setStatus('Take cleared. Record another whenever you are ready.');
-  };
-
-  return <div className="content-wrap">
-    <PageHeader eyebrow="Speak it into memory" title="Shadow the sound." description="Listen to a native-style pronunciation, record your own voice, and compare the two until the word feels natural." action={<Link href="/library" className="button-secondary"><LibraryBig size={15} /> Choose from library</Link>} />
-    {list.isLoading ? <LoadingState rows={4} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : !selected ? <EmptyState title="Your microphone is waiting." copy="Save some vocabulary first, then return here to practice each word out loud." action={<Link href="/library" className="button-primary"><Plus size={15} /> Save vocabulary</Link>} /> : <div className="grid gap-6 lg:grid-cols-[.78fr_1.22fr]">
-      <div className="card-surface p-5 md:p-6">
-        <div className="flex items-center justify-between"><div><p className="eyebrow">Your practice list</p><h2 className="serif mt-2 text-2xl">Choose a word.</h2></div><Mic size={19} className="text-[hsl(var(--primary))]" /></div>
-        <div className="mt-5 space-y-2">{items.map(item => <button key={item.id} onClick={() => { if (isRecording) stopRecording(); setSelectedId(item.id); setStatus(''); }} className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition ${selected.id === item.id ? 'border-[hsl(var(--primary)/.5)] bg-[hsl(var(--secondary)/.65)]' : 'border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary)/.4)]'}`} data-testid={`button-shadow-word-${item.id}`}><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--accent)/.25)] text-xs font-bold text-[hsl(var(--primary))]">{item.term.slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.term}</span><span className="mt-0.5 block truncate text-xs text-[hsl(var(--muted-foreground))]">{item.meaning}</span></span>{recordings[item.id] && <Check size={15} className="shrink-0 text-[hsl(var(--primary))]" />}</button>)}</div>
-        <div className="mt-6 rounded-2xl bg-[hsl(var(--secondary)/.45)] p-4"><p className="eyebrow mb-2">A simple loop</p><p className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Listen once. Notice the stress. Record yourself. Compare. Repeat until it sounds easy.</p></div>
-      </div>
-      <div className="card-surface overflow-hidden p-6 md:p-8" data-testid="panel-shadowing">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><span className="tag" style={{ color: typeColors[selected.type], background: `${typeColors[selected.type]}18` }}>{typeLabels[selected.type]}</span><h2 className="serif mt-5 text-[clamp(42px,7vw,72px)] leading-none tracking-[-.05em]">{selected.term}</h2><p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{selected.pronunciation || 'Listen for the natural stress and rhythm'}</p></div><div className="rounded-2xl bg-[hsl(var(--accent)/.25)] p-3 text-[hsl(var(--primary))]"><Headphones size={22} /></div></div>
-        <p className="mt-6 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{selected.meaning}</p>
-        <div className="mt-7 grid gap-3 md:grid-cols-2">
-          <div className="rounded-2xl border border-[hsl(var(--border))] p-4"><div className="flex items-center justify-between"><p className="eyebrow">Native audio</p><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">en-US</span></div><div className="mt-5 flex items-center gap-3"><button className="flex h-11 w-11 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" onClick={speakNative} aria-label="Play native pronunciation" data-testid="button-play-native">{nativePlaying ? <Pause size={17} /> : <Volume2 size={17} />}</button><div className="flex flex-1 items-end gap-1">{[18, 28, 14, 34, 22, 39, 20, 30, 16, 25, 13, 21].map((height, index) => <span key={index} className={`wave-bar ${nativePlaying ? 'wave-bar-active' : ''}`} style={{ height }} />)}</div></div><p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">Listen for the stressed syllable and the shape of the final sound.</p></div>
-          <div className="rounded-2xl border border-[hsl(var(--border))] p-4"><div className="flex items-center justify-between"><p className="eyebrow">Your recording</p><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{isRecording ? `${String(elapsed).padStart(2, '0')}s` : recording ? 'saved locally' : 'not recorded'}</span></div><div className="mt-5 flex items-center gap-3"><button className={`flex h-11 w-11 items-center justify-center rounded-full ${isRecording ? 'bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]'}`} onClick={isRecording ? stopRecording : startRecording} aria-label={isRecording ? 'Stop recording' : 'Start recording'} data-testid="button-record-pronunciation">{isRecording ? <Pause size={17} /> : <Mic size={17} />}</button><div className="flex flex-1 items-end gap-1">{[12, 22, 17, 27, 15, 33, 19, 25, 13, 28, 18, 23].map((height, index) => <span key={index} className={`wave-bar ${isRecording ? 'wave-bar-active' : ''}`} style={{ height }} />)}</div></div><p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">{isRecording ? 'Recording from your microphone...' : 'Record your voice, then play it back here.'}</p></div>
-        </div>
-        {recording && <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-[hsl(var(--secondary)/.55)] p-4"><audio ref={audioRef} src={recording} controls className="h-9 min-w-[220px] flex-1" /><button className="button-quiet text-[hsl(var(--destructive))]" onClick={clearTake}><Trash2 size={14} /> Clear take</button></div>}
-        {status && <p className="mt-5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-3 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]" role="status">{status}</p>}
-        <div className="mt-7 border-t border-[hsl(var(--border))] pt-5"><p className="eyebrow mb-2">Compare by ear</p><p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Aim for the same stress, rhythm, and relaxed ending. You do not need to sound identical—just clear and comfortable.</p></div>
-      </div>
-    </div>}
-  </div>;
-}
-
 function Insights() {
   const dashboard = useGetDashboard();
   const list = useListVocabulary();
@@ -744,11 +864,11 @@ function NotFoundView() {
 
 function Router() {
   const [location] = useLocation();
-  return <Shell><ErrorBoundary resetKey={location}><Switch><Route path="/" component={Dashboard} /><Route path="/challenge" component={() => <DailyChallenge fullPage />} /><Route path="/library" component={Library} /><Route path="/shadowing" component={Shadowing} /><Route path="/review" component={Review} /><Route path="/insights" component={Insights} /><Route component={NotFoundView} /></Switch></ErrorBoundary></Shell>;
+  return <Shell><ErrorBoundary resetKey={location}><Switch><Route path="/" component={Dashboard} /><Route path="/challenge" component={() => <DailyChallenge fullPage />} /><Route path="/library" component={Library} /><Route path="/review" component={Review} /><Route path="/insights" component={Insights} /><Route component={NotFoundView} /></Switch></ErrorBoundary></Shell>;
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><AuthProvider><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AuthGate><Router /></AuthGate></WouterRouter><Toaster /></TooltipProvider></AuthProvider></QueryClientProvider>;
 }
 
 export default App;

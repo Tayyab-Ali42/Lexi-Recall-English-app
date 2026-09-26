@@ -1,9 +1,8 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db, reviewEventsTable, vocabularyTable } from "@workspace/db";
 import {
-  GetVocabularyResponse,
   SubmitReviewBody,
   SubmitReviewParams,
   SubmitReviewResponse,
@@ -27,7 +26,7 @@ router.post("/review/:id", async (req, res): Promise<void> => {
   const [existing] = await db
     .select()
     .from(vocabularyTable)
-    .where(eq(vocabularyTable.id, params.data.id));
+    .where(and(eq(vocabularyTable.id, params.data.id), eq(vocabularyTable.userId, req.userId!)));
   if (!existing) {
     res.status(404).json({ error: "Vocabulary item not found" });
     return;
@@ -41,6 +40,7 @@ router.post("/review/:id", async (req, res): Promise<void> => {
     .returning();
   await db.insert(reviewEventsTable).values({
     id: randomUUID(),
+    userId: req.userId!,
     vocabularyId: existing.id,
     rating: body.data.rating,
   });

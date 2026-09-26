@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db, reviewEventsTable, vocabularyTable } from "@workspace/db";
 import { GetDashboardResponse } from "@workspace/api-zod";
 
@@ -37,12 +37,13 @@ function calculateStreak(dates: Date[]) {
   return streak;
 }
 
-router.get("/dashboard", async (_req, res): Promise<void> => {
+router.get("/dashboard", async (req, res): Promise<void> => {
   const [items, events] = await Promise.all([
-    db.select().from(vocabularyTable),
+    db.select().from(vocabularyTable).where(eq(vocabularyTable.userId, req.userId!)),
     db
       .select({ reviewedAt: reviewEventsTable.reviewedAt })
       .from(reviewEventsTable)
+      .where(eq(reviewEventsTable.userId, req.userId!))
       .orderBy(desc(reviewEventsTable.reviewedAt)),
   ]);
   const now = new Date();

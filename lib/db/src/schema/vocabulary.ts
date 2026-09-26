@@ -7,9 +7,11 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const vocabularyTable = pgTable("vocabulary", {
   id: text("id").primaryKey(),
+  userId: text("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
   term: text("term").notNull(),
   type: text("type").notNull(),
   meaning: text("meaning").notNull(),
@@ -32,6 +34,7 @@ export const vocabularyTable = pgTable("vocabulary", {
 
 export const reviewEventsTable = pgTable("review_events", {
   id: text("id").primaryKey(),
+  userId: text("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
   vocabularyId: text("vocabulary_id")
     .notNull()
     .references(() => vocabularyTable.id, { onDelete: "cascade" }),
@@ -41,6 +44,7 @@ export const reviewEventsTable = pgTable("review_events", {
 
 export const insertVocabularySchema = createInsertSchema(vocabularyTable).omit({
   id: true,
+  userId: true,
   intervalDays: true,
   easeFactor: true,
   repetitions: true,

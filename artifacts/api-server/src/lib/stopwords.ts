@@ -1,0 +1,18 @@
+export const STOPWORDS = new Set([
+  "the", "and", "for", "are", "but", "not", "you", "your", "with", "have",
+  "this", "that", "from", "they", "will", "would", "could", "should", "there",
+  "their", "them", "what", "when", "where", "which", "while", "about", "into",
+  "than", "then", "them", "these", "those", "been", "being", "does", "did",
+  "doing", "here", "just", "like", "more", "most", "some", "such", "only",
+  "over", "under", "again", "further", "once", "very", "each", "other",
+  "because", "before", "after", "above", "below", "between", "through",
+  "during", "same", "own", "few", "all", "any", "both", "can", "had", "has",
+  "her", "him", "his", "how", "its", "may", "our", "out", "she", "was", "who",
+  "why", "yes", "yet", "you're", "i'm", "it's", "don't", "didn't", "isn't",
+  "aren't", "wasn't", "weren't", "won't", "can't", "shouldn't", "wouldn't",
+  "couldn't", "into", "onto", "off", "upon", "also", "well", "were", "one",
+  "two", "three", "get", "got", "let", "lot", "much", "many", "make", "made",
+  "said", "say", "says", "went", "come", "came", "know", "knew", "think",
+  "thought", "want", "wanted", "look", "looked", "way", "ways", "day", "days",
+  "time", "times", "people", "person", "thing", "things",
+]);

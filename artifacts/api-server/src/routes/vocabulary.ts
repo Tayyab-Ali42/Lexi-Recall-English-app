@@ -28,7 +28,7 @@ router.get("/vocabulary", async (req, res): Promise<void> => {
     return;
   }
 
-  const filters = [];
+  const filters = [eq(vocabularyTable.userId, req.userId!)];
   if (parsed.data.type) filters.push(eq(vocabularyTable.type, parsed.data.type));
   if (parsed.data.search) {
     const search = `%${parsed.data.search}%`;
@@ -38,14 +38,14 @@ router.get("/vocabulary", async (req, res): Promise<void> => {
         ilike(vocabularyTable.meaning, search),
         ilike(vocabularyTable.urduMeaning, search),
         ilike(vocabularyTable.example, search),
-      ),
+      )!,
     );
   }
 
   const items = await db
     .select()
     .from(vocabularyTable)
-    .where(filters.length ? and(...filters) : undefined)
+    .where(and(...filters))
     .orderBy(desc(vocabularyTable.createdAt));
   res.json(ListVocabularyResponse.parse(items));
 });
@@ -62,6 +62,7 @@ router.post("/vocabulary", async (req, res): Promise<void> => {
     .values({
       id: randomUUID(),
       ...parsed.data,
+      userId: req.userId!,
       tags: parsed.data.tags ?? [],
       retrievalQuestions: parsed.data.retrievalQuestions ?? [],
     })
@@ -79,7 +80,7 @@ router.get("/vocabulary/:id", async (req, res): Promise<void> => {
   const [item] = await db
     .select()
     .from(vocabularyTable)
-    .where(eq(vocabularyTable.id, parsed.data.id));
+    .where(and(eq(vocabularyTable.id, parsed.data.id), eq(vocabularyTable.userId, req.userId!)));
   if (!item) {
     res.status(404).json({ error: "Vocabulary item not found" });
     return;
@@ -102,7 +103,7 @@ router.patch("/vocabulary/:id", async (req, res): Promise<void> => {
   const [item] = await db
     .update(vocabularyTable)
     .set(body.data)
-    .where(eq(vocabularyTable.id, params.data.id))
+    .where(and(eq(vocabularyTable.id, params.data.id), eq(vocabularyTable.userId, req.userId!)))
     .returning();
   if (!item) {
     res.status(404).json({ error: "Vocabulary item not found" });
@@ -119,7 +120,7 @@ router.delete("/vocabulary/:id", async (req, res): Promise<void> => {
   }
   const [item] = await db
     .delete(vocabularyTable)
-    .where(eq(vocabularyTable.id, params.data.id))
+    .where(and(eq(vocabularyTable.id, params.data.id), eq(vocabularyTable.userId, req.userId!)))
     .returning({ id: vocabularyTable.id });
   if (!item) {
     res.status(404).json({ error: "Vocabulary item not found" });
@@ -128,11 +129,11 @@ router.delete("/vocabulary/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-router.get("/review/next", async (_req, res): Promise<void> => {
+router.get("/review/next", async (req, res): Promise<void> => {
   const [item] = await db
     .select()
     .from(vocabularyTable)
-    .where(lte(vocabularyTable.dueAt, new Date()))
+    .where(and(lte(vocabularyTable.dueAt, new Date()), eq(vocabularyTable.userId, req.userId!)))
     .orderBy(asc(vocabularyTable.dueAt))
     .limit(1);
   res.json(item ? GetVocabularyResponse.parse(item) : null);
