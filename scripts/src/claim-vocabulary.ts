@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { db, pool, reviewEventsTable, usersTable, vocabularyTable } from "@workspace/db";
 
 async function main() {
-  const email = process.argv[2]?.trim().toLowerCase();
+  const email = process.argv.slice(2).filter((arg) => arg !== "--")[0]?.trim().toLowerCase();
   if (!email) {
     console.error("Usage: pnpm --filter @workspace/scripts run claim-vocabulary -- your@email.com");
     process.exitCode = 1;

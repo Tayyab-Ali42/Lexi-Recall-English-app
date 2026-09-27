@@ -10,8 +10,9 @@ import bcrypt from "bcryptjs";
 import { db, pool, usersTable } from "@workspace/db";
 
 async function main() {
-  const email = process.argv[2]?.trim().toLowerCase();
-  const newPassword = process.argv[3];
+  const args = process.argv.slice(2).filter((arg) => arg !== "--");
+  const email = args[0]?.trim().toLowerCase();
+  const newPassword = args[1];
 
   if (!email || !newPassword) {
     console.error("Usage: pnpm --filter @workspace/scripts run reset-password -- your@email.com NewPassword123");
