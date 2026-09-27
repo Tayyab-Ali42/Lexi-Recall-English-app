@@ -68,7 +68,7 @@ type FormState = {
 const blankForm: FormState = { term: '', type: 'word', meaning: '', partOfSpeech: '', pronunciation: '', example: '', translation: '', urduMeaning: '', notes: '', tags: '', retrievalQuestions: [''] };
 
 const typeLabels: Record<string, string> = { word: 'Word', phrase: 'Phrase', idiom: 'Idiom', phrasal_verb: 'Phrasal verb' };
-const typeColors: Record<string, string> = { word: '#0B6E6A', phrase: '#3C6E50', idiom: '#4E54C8', phrasal_verb: '#3A6EA5' };
+const typeColors: Record<string, string> = { word: '#2B5FE2', phrase: '#1F9D64', idiom: '#7C5CFC', phrasal_verb: '#0EA5A0' };
 
 function formatDate(value?: string | null) {
   if (!value) return 'Not reviewed yet';
@@ -305,7 +305,7 @@ function EmptyState({ title, copy, action }: { title: string; copy: string; acti
 }
 
 function StatCard({ label, value, detail, accent = 'primary' }: { label: string; value: string | number; detail: string; accent?: 'primary' | 'gold' | 'sage' }) {
-  const color = accent === 'gold' ? 'hsl(var(--accent))' : accent === 'sage' ? '#3C6E50' : 'hsl(var(--primary))';
+  const color = accent === 'gold' ? 'hsl(var(--accent))' : accent === 'sage' ? '#1F9D64' : 'hsl(var(--primary))';
   return <div className="card-surface hover-lift p-5" data-testid={`stat-${label.toLowerCase().replaceAll(' ', '-')}`}><div className="mb-6 flex items-start justify-between"><span className="eyebrow">{label}</span><span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} /></div><p className="serif text-4xl leading-none">{value}</p><p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">{detail}</p></div>;
 }
 
