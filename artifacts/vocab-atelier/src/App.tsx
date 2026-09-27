@@ -5,6 +5,7 @@ import {
   Brain,
   CalendarDays,
   Check,
+  ChevronLeft,
   ChevronRight,
   CircleAlert,
   FileDown,
@@ -13,6 +14,7 @@ import {
   Gauge,
   LibraryBig,
   Loader2,
+  LogOut,
   Pencil,
   Plus,
   RotateCcw,
@@ -66,7 +68,7 @@ type FormState = {
 const blankForm: FormState = { term: '', type: 'word', meaning: '', partOfSpeech: '', pronunciation: '', example: '', translation: '', urduMeaning: '', notes: '', tags: '', retrievalQuestions: [''] };
 
 const typeLabels: Record<string, string> = { word: 'Word', phrase: 'Phrase', idiom: 'Idiom', phrasal_verb: 'Phrasal verb' };
-const typeColors: Record<string, string> = { word: '#9a4d3f', phrase: '#5f806a', idiom: '#cf9651', phrasal_verb: '#56748a' };
+const typeColors: Record<string, string> = { word: '#0B6E6A', phrase: '#3C6E50', idiom: '#4E54C8', phrasal_verb: '#3A6EA5' };
 
 function formatDate(value?: string | null) {
   if (!value) return 'Not reviewed yet';
@@ -247,7 +249,6 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <ToastHost />
-      <div className="grain" />
       <aside className="sidebar">
         <Logo />
         <div className="mt-12 space-y-1">
@@ -278,6 +279,7 @@ function Shell({ children }: { children: ReactNode }) {
         <NavItem href="/library" icon={<LibraryBig />} label="Library" />
         <NavItem href="/review" icon={<Brain />} label="Review" />
         <NavItem href="/insights" icon={<TrendingUp />} label="Insights" />
+        <button type="button" className="nav-link" onClick={logout} data-testid="button-logout-mobile"><LogOut /><span>Log out</span></button>
       </nav>
     </div>
   );
@@ -303,7 +305,7 @@ function EmptyState({ title, copy, action }: { title: string; copy: string; acti
 }
 
 function StatCard({ label, value, detail, accent = 'primary' }: { label: string; value: string | number; detail: string; accent?: 'primary' | 'gold' | 'sage' }) {
-  const color = accent === 'gold' ? 'hsl(var(--accent))' : accent === 'sage' ? '#5f806a' : 'hsl(var(--primary))';
+  const color = accent === 'gold' ? 'hsl(var(--accent))' : accent === 'sage' ? '#3C6E50' : 'hsl(var(--primary))';
   return <div className="card-surface hover-lift p-5" data-testid={`stat-${label.toLowerCase().replaceAll(' ', '-')}`}><div className="mb-6 flex items-start justify-between"><span className="eyebrow">{label}</span><span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} /></div><p className="serif text-4xl leading-none">{value}</p><p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">{detail}</p></div>;
 }
 
@@ -742,7 +744,7 @@ function Review() {
   const [answerCorrect, setAnswerCorrect] = useState<boolean | null>(null);
   const [lastRating, setLastRating] = useState<ReviewRatingType | null>(null);
   const [saveError, setSaveError] = useState('');
-  const [activeQuestion, setActiveQuestion] = useState('');
+  const [questionIndex, setQuestionIndex] = useState(0);
   const dueCards = useMemo(() => (list.data ?? []).filter(item => new Date(item.dueAt).getTime() <= Date.now()).sort((a, b) => +new Date(a.dueAt) - +new Date(b.dueAt)), [list.data]);
   const retrievalEligible = useMemo(() => dueCards.filter(item => (item.retrievalQuestions?.length ?? 0) > 0).length, [dueCards]);
   const card = sessionCards[cardIndex];
@@ -759,8 +761,13 @@ function Review() {
     setAnswerCorrect(null);
     setLastRating(null);
     setSaveError('');
-    setActiveQuestion(mode === 'retrieval' && card?.retrievalQuestions?.length ? card.retrievalQuestions[Math.floor(Math.random() * card.retrievalQuestions.length)] : '');
+    setQuestionIndex(card?.retrievalQuestions?.length ? Math.floor(Math.random() * card.retrievalQuestions.length) : 0);
   }, [card?.id, mode]);
+
+  const questionCount = card?.retrievalQuestions?.length ?? 0;
+  const activeQuestion = questionCount ? card!.retrievalQuestions[questionIndex % questionCount] : '';
+  const showPrevQuestion = () => setQuestionIndex(index => (index - 1 + questionCount) % questionCount);
+  const showNextQuestion = () => setQuestionIndex(index => (index + 1) % questionCount);
 
   const startSession = () => {
     if (mode === 'retrieval' && retrievalEligible === 0) return;
@@ -817,7 +824,7 @@ function Review() {
     </div> : <div className="mx-auto max-w-2xl fade-in">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><span className="eyebrow">Card {cardIndex + 1} of {sessionCards.length}</span><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{practiceModes.find(option => option.value === mode)?.label}</p></div><button className="button-quiet" onClick={() => setSessionStarted(false)} data-testid="button-change-practice">Change session</button></div>
       <div className={`card-surface relative overflow-hidden p-6 transition md:p-7 ${answered ? 'border-[hsl(var(--primary)/.35)]' : ''}`}><div className="absolute left-0 top-0 h-1 w-full bg-[hsl(var(--accent))]" /><div className="flex items-center justify-between gap-3"><span className="tag" style={{ color: typeColors[card.type], background: `${typeColors[card.type]}18` }}>{typeLabels[card.type]}</span><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{formatDue(card.dueAt)}</span></div>
-        {mode === 'word' || mode === 'spelling' ? <div className="mt-10 text-center"><p className="eyebrow">Clue</p><p className="serif mt-4 text-2xl leading-snug">{card.meaning}</p></div> : mode === 'retrieval' ? <div className="mt-10 text-center"><p className="eyebrow">Your question</p><p className="serif mt-4 text-2xl leading-snug" data-testid="text-review-retrieval-question">{activeQuestion || 'No recall questions saved for this word yet.'}</p></div> : <div className="mt-10 text-center"><h2 className="serif text-[clamp(40px,8vw,70px)] leading-none tracking-[-.045em]" data-testid="text-review-term">{card.term}</h2>{card.pronunciation && <p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{card.pronunciation}</p>}</div>}
+        {mode === 'word' || mode === 'spelling' ? <div className="mt-10 text-center"><p className="eyebrow">Clue</p><p className="serif mt-4 text-2xl leading-snug">{card.meaning}</p></div> : mode === 'retrieval' ? <div className="mt-10 text-center"><p className="eyebrow">Your question{questionCount > 1 ? ` (${questionIndex % questionCount + 1} of ${questionCount})` : ''}</p><div className="mt-4 flex items-center justify-center gap-3">{questionCount > 1 && <button type="button" className="button-quiet" onClick={showPrevQuestion} aria-label="Previous question" data-testid="button-prev-retrieval-question"><ChevronLeft size={18} /></button>}<p className="serif max-w-md text-2xl leading-snug" data-testid="text-review-retrieval-question">{activeQuestion || 'No recall questions saved for this word yet.'}</p>{questionCount > 1 && <button type="button" className="button-quiet" onClick={showNextQuestion} aria-label="Next question" data-testid="button-next-retrieval-question"><ChevronRight size={18} /></button>}</div></div> : <div className="mt-10 text-center"><h2 className="serif text-[clamp(40px,8vw,70px)] leading-none tracking-[-.045em]" data-testid="text-review-term">{card.term}</h2>{card.pronunciation && <p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{card.pronunciation}</p>}</div>}
         {!answered ? <div className="mx-auto mt-9 max-w-lg border-t border-[hsl(var(--border))] pt-7">
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{getReviewPrompt(mode, card)}</p>
           {mode === 'recall' ? <button className="button-primary mt-5" onClick={checkAnswer} data-testid="button-reveal-answer">Reveal answer <ChevronRight size={15} /></button> : mode === 'choice' || mode === 'match' ? <div className="mt-5 space-y-2">{choices.map(choice => <button className={`review-option w-full ${selectedOption === choice ? 'border-[hsl(var(--primary))] bg-[hsl(var(--secondary))]' : ''}`} key={choice} onClick={() => setSelectedOption(choice)} data-testid="button-choice-option">{choice}</button>)}<button className="button-primary mt-3" onClick={checkAnswer} disabled={!selectedOption} data-testid="button-check-answer">Check answer <Check size={15} /></button></div> : <div className="mt-5"><textarea className="field min-h-[90px] resize-y" dir={mode === 'urdu' ? 'rtl' : 'auto'} lang={mode === 'urdu' ? 'ur' : undefined} value={answer} onChange={event => setAnswer(event.target.value)} placeholder={mode === 'urdu' ? 'اردو میں جواب لکھیں' : 'Write your answer here...'} data-testid="input-review-answer" /><button className="button-primary mt-3" onClick={checkAnswer} disabled={!answer.trim()} data-testid="button-check-answer">Check answer <Check size={15} /></button></div>}
