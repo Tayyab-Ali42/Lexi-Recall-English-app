@@ -246,6 +246,8 @@ function ToastHost() {
 
 function Shell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const dashboard = useGetDashboard();
+  const streak = dashboard.data?.streak ?? 0;
   return (
     <div className="app-shell">
       <ToastHost />
@@ -259,15 +261,11 @@ function Shell({ children }: { children: ReactNode }) {
           <NavItem href="/review" icon={<Brain size={17} />} label="Review" />
           <NavItem href="/insights" icon={<TrendingUp size={17} />} label="Insights" />
         </div>
-        <div className="mt-auto rounded-2xl border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-accent))] p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="eyebrow text-[hsl(var(--sidebar-foreground)/.5)]">A small ritual</span>
-            <Sparkles size={14} className="text-[hsl(var(--sidebar-primary))]" />
-          </div>
-          <p className="serif text-[17px] leading-snug text-[hsl(var(--sidebar-foreground))]">A word a day is a room getting larger.</p>
-          <p className="mt-3 text-[11px] leading-relaxed text-[hsl(var(--sidebar-foreground)/.5)]">Keep showing up. Your future self will have more to say.</p>
+        <div className="mt-auto flex items-center gap-3 rounded-2xl border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-accent)/.55)] p-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--accent)/.2)] text-[hsl(var(--accent))]"><Flame size={20} /></span>
+          <div className="min-w-0"><p className="serif text-xl leading-none text-[hsl(var(--sidebar-foreground))]">{streak}<span className="text-sm font-normal"> day{streak === 1 ? '' : 's'}</span></p><p className="mt-1 text-[11px] leading-snug text-[hsl(var(--sidebar-foreground)/.55)]">Keep the streak going today.</p></div>
         </div>
-        <div className="mt-5 flex items-center gap-3 px-2">
+        <div className="mt-4 flex items-center gap-3 px-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--sidebar-primary)/.18)] text-xs font-bold text-[hsl(var(--sidebar-primary))]">{(user?.email ?? '?').slice(0, 1).toUpperCase()}</div>
           <div className="min-w-0 flex-1"><p className="truncate text-xs text-[hsl(var(--sidebar-foreground)/.85)]" data-testid="text-current-user">{user?.email}</p><button type="button" className="mono text-[9px] text-[hsl(var(--sidebar-foreground)/.5)] underline-offset-2 hover:underline" onClick={logout} data-testid="button-logout">LOG OUT</button></div>
         </div>
@@ -302,6 +300,17 @@ function ErrorState({ onRetry, message = 'The shelves are taking a moment to ope
 
 function EmptyState({ title, copy, action }: { title: string; copy: string; action?: ReactNode }) {
   return <div className="card-surface flex flex-col items-center justify-center px-6 py-20 text-center" data-testid="status-empty"><span className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]"><FolderOpen size={24} /></span><p className="serif text-2xl">{title}</p><p className="mt-2 max-w-sm text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{copy}</p>{action && <div className="mt-5">{action}</div>}</div>;
+}
+
+function RadialProgress({ percent, size = 136, stroke = 13, color = 'hsl(var(--primary))', trackColor = 'hsl(var(--secondary))' }: { percent: number; size?: number; stroke?: number; color?: string; trackColor?: string }) {
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.min(100, Math.max(0, percent));
+  const offset = circumference - (clamped / 100) * circumference;
+  return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+    <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={trackColor} strokeWidth={stroke} />
+    <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1)' }} />
+  </svg>;
 }
 
 function StatCard({ label, value, detail, accent = 'primary' }: { label: string; value: string | number; detail: string; accent?: 'primary' | 'gold' | 'sage' }) {
@@ -381,29 +390,37 @@ function Dashboard() {
   return <div className="content-wrap">
     <PageHeader eyebrow={new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())} title={summary?.dueToday ? 'Your words are waiting.' : 'A quiet day for language.'} description={summary?.dueToday ? `${summary.dueToday} ${summary.dueToday === 1 ? 'card is' : 'cards are'} ready for a thoughtful review.` : 'Keep collecting. Your next meaningful phrase is just around the corner.'} action={<Link href="/library" className="button-primary" data-testid="link-add-word"><Plus size={16} /> Add a word</Link>} />
     {dashboard.isLoading ? <LoadingState rows={1} /> : dashboard.isError || !summary ? <ErrorState onRetry={() => dashboard.refetch()} /> : <>
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 fade-in delay-1">
-        <StatCard label="In your lexicon" value={summary.total} detail="words worth keeping" />
-        <StatCard label="Due today" value={summary.dueToday} detail={summary.dueToday ? 'ready when you are' : 'you are all caught up'} accent="gold" />
-        <StatCard label="Mastered" value={`${percent}%`} detail={`${summary.mastered} durable memories`} accent="sage" />
-        <StatCard label="Streak" value={`${summary.streak}d`} detail="your rhythm is becoming a habit" accent="gold" />
+      <section className="grid gap-4 fade-in delay-1 lg:grid-cols-[auto_1fr]">
+        <div className="card-surface flex flex-col items-center justify-center p-8" data-testid="card-mastery-ring">
+          <div className="relative flex h-[136px] w-[136px] items-center justify-center">
+            <RadialProgress percent={percent} />
+            <div className="absolute inset-0 flex flex-col items-center justify-center"><span className="serif text-3xl">{percent}%</span><span className="eyebrow mt-0.5">mastered</span></div>
+          </div>
+          <p className="mt-5 text-center text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">{summary.mastered} of {summary.total} words locked in for good</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="In your lexicon" value={summary.total} detail="words worth keeping" />
+          <StatCard label="Due today" value={summary.dueToday} detail={summary.dueToday ? 'ready when you are' : 'you are all caught up'} accent="gold" />
+          <StatCard label="Reviewed today" value={summary.reviewedToday} detail="rounds completed" accent="sage" />
+          <StatCard label="Streak" value={`${summary.streak}d`} detail="your rhythm is becoming a habit" accent="gold" />
+        </div>
+      </section>
+      <section className="card-surface relative mt-5 overflow-hidden p-7 fade-in delay-2 md:p-8">
+        <div className="flex flex-col items-center gap-6 text-center md:flex-row md:justify-between md:text-left">
+          <div className="flex items-center gap-4"><span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]"><Brain size={24} /></span><div><h2 className="serif text-2xl leading-tight">{summary.dueToday ? 'Ready for a round?' : 'Get ahead of tomorrow.'}</h2><p className="mt-1.5 max-w-sm text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">A short session is enough to keep the thread alive. Your cards meet you where you left off.</p></div></div>
+          <Link href="/review" className="button-primary shrink-0" data-testid="link-start-review">{summary.dueToday ? 'Begin review' : 'Review a few'} <ChevronRight size={16} /></Link>
+        </div>
       </section>
       <DailyChallenge />
-      <section className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_.65fr]">
-        <div className="card-surface relative overflow-hidden p-7 md:p-9 fade-in delay-2">
-          <div className="absolute -right-10 -top-12 h-48 w-48 rounded-full border-[22px] border-[hsl(var(--accent)/.18)]" />
-          <div className="relative">
-            <div className="flex items-start justify-between gap-4"><div><p className="eyebrow mb-3">The next right thing</p><h2 className="serif max-w-md text-3xl leading-tight">Give your memory a little exercise.</h2><p className="mt-3 max-w-md text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">A short session is enough to keep the thread alive. Your cards will meet you where you left off.</p></div><span className="hidden rounded-full bg-[hsl(var(--accent)/.3)] p-3 text-[hsl(var(--primary))] sm:block"><Target size={22} /></span></div>
-            <div className="mt-8 flex flex-wrap items-center gap-4"><Link href="/review" className="button-primary" data-testid="link-start-review"><Brain size={16} /> {summary.dueToday ? 'Begin review' : 'Review a few'}</Link><span className="mono text-[10px] uppercase tracking-[.12em] text-[hsl(var(--muted-foreground))]">{summary.reviewedToday} reviewed today</span></div>
-          </div>
-        </div>
+      <section className="mt-6 grid gap-5 lg:grid-cols-[.65fr_1.35fr]">
         <div className="card-surface p-7 fade-in delay-3">
           <div className="flex items-center justify-between"><p className="eyebrow">Your collection</p><span className="mono text-xs text-[hsl(var(--muted-foreground))]">{summary.total} total</span></div>
           <div className="mt-7 space-y-5">{types.map((type) => { const count = summary.typeCounts?.[type] ?? 0; const width = summary.total ? `${Math.max(4, (count / summary.total) * 100)}%` : '4%'; return <div key={type}><div className="mb-2 flex justify-between text-xs"><span>{typeLabels[type]}</span><span className="mono text-[hsl(var(--muted-foreground))]">{count}</span></div><div className="bar-track"><div className="bar-fill" style={{ width, background: typeColors[type] }} /></div></div>; })}</div>
         </div>
-      </section>
-      <section className="mt-8 fade-in delay-3">
-         <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="eyebrow">Recently added</p><h2 className="serif mt-2 text-2xl">Fresh on the shelf</h2></div><Link href="/library" className="button-quiet shrink-0" data-testid="link-view-library">View library <ChevronRight size={14} /></Link></div>
-         {list.isLoading ? <LoadingState rows={2} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : recent.length === 0 ? <EmptyState title="Your shelf is ready." copy="Save the first word that makes you pause." action={<Link href="/library" className="button-primary" data-testid="link-add-first-word"><Plus size={15} /> Add your first word</Link>} /> : <div className="grid min-w-0 gap-3 md:grid-cols-2">{recent.map((item, index) => <VocabPreview key={item.id} item={item} index={index} />)}</div>}
+        <div className="fade-in delay-3">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="eyebrow">Recently added</p><h2 className="serif mt-2 text-2xl">Fresh on the shelf</h2></div><Link href="/library" className="button-quiet shrink-0" data-testid="link-view-library">View library <ChevronRight size={14} /></Link></div>
+          {list.isLoading ? <LoadingState rows={2} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : recent.length === 0 ? <EmptyState title="Your shelf is ready." copy="Save the first word that makes you pause." action={<Link href="/library" className="button-primary" data-testid="link-add-first-word"><Plus size={15} /> Add your first word</Link>} /> : <div className="grid min-w-0 gap-3 sm:grid-cols-2">{recent.map((item, index) => <VocabPreview key={item.id} item={item} index={index} />)}</div>}
+        </div>
       </section>
     </>}
   </div>;
@@ -560,7 +577,7 @@ function Library() {
        <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]"><Tag size={15} /></span><div><p className="eyebrow">Thematic shelves</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Use tags as categories to make your words easier to revisit.</p></div></div><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{categories.length} {categories.length === 1 ? 'theme' : 'themes'}</span></div>
        {categories.length ? <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => setCategory('all')} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${category === 'all' ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'}`} data-testid="button-category-all">All themes</button>{categories.map(theme => <button key={theme} onClick={() => setCategory(theme)} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${category === theme ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'}`} data-testid={`button-category-${theme}`}>#{theme} <span className="mono ml-1 opacity-70">{allItems.filter(item => item.tags.includes(theme)).length}</span></button>)}</div> : <p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">Add themes like travel, work, or conversation in a word's Tags field.</p>}
      </section>
-    {list.isLoading ? <LoadingState rows={5} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : items.length === 0 ? <EmptyState title={search ? 'Nothing matched.' : 'The shelf is still open.'} copy={search ? 'Try a shorter search or another spelling.' : 'Collect words from conversations, books, and the odd sentence that stays with you.'} action={!search ? <button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-empty"><Plus size={15} /> Save a word</button> : undefined} /> : <div className="space-y-3">{items.map((item, index) => <LibraryRow key={item.id} item={item} index={index} onView={() => setViewingId(item.id)} onEdit={() => setEditingId(item.id)} onDelete={() => handleDelete(item.id, item.term)} deleting={deleteMutation.isPending} />)}</div>}
+    {list.isLoading ? <LoadingState rows={5} /> : list.isError ? <ErrorState onRetry={() => list.refetch()} /> : items.length === 0 ? <EmptyState title={search ? 'Nothing matched.' : 'The shelf is still open.'} copy={search ? 'Try a shorter search or another spelling.' : 'Collect words from conversations, books, and the odd sentence that stays with you.'} action={!search ? <button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-empty"><Plus size={15} /> Save a word</button> : undefined} /> : <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map((item, index) => <LibraryRow key={item.id} item={item} index={index} onView={() => setViewingId(item.id)} onEdit={() => setEditingId(item.id)} onDelete={() => handleDelete(item.id, item.term)} deleting={deleteMutation.isPending} />)}</div>}
      {exportList.data?.length ? <PrintExport items={exportList.data} /> : null}
     {editingId && <VocabularyModal editingId={editingId === 'new' ? null : editingId} onClose={() => setEditingId(null)} />}
     {viewingId && (() => { const item = allItems.find(entry => entry.id === viewingId); return item ? <VocabularyDetailModal item={item} onClose={() => setViewingId(null)} onEdit={() => { setViewingId(null); setEditingId(item.id); }} /> : null; })()}
@@ -596,9 +613,19 @@ function PrintExport({ items }: { items: VocabularyItem[] }) {
 }
 
 function LibraryRow({ item, index, onView, onEdit, onDelete, deleting }: { item: VocabularyItem; index: number; onView: () => void; onEdit: () => void; onDelete: () => void; deleting: boolean }) {
-  return <div className={`card-surface hover-lift flex flex-col gap-4 p-5 fade-in delay-${Math.min(index + 1, 4)} md:flex-row md:items-center`} data-testid={`row-vocabulary-${item.id}`}>
-    <button type="button" className="flex min-w-0 flex-1 items-center gap-4 text-left" onClick={onView} data-testid={`button-view-${item.id}`}><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold" style={{ background: `${typeColors[item.type]}18`, color: typeColors[item.type] }}>{item.term.slice(0, 1).toUpperCase()}</span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold">{item.term}</h3><span className="tag">{typeLabels[item.type]}</span>{item.source === 'ai' && <span className="tag bg-[hsl(var(--accent)/.25)]"><Sparkles size={10} className="mr-1" /> enriched</span>}</div><p className="mt-1 truncate text-sm text-[hsl(var(--muted-foreground))]">{item.meaning}</p><div className="mt-2 flex flex-wrap gap-1">{item.tags.slice(0, 3).map(tag => <span key={tag} className="mono text-[9px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]">#{tag}</span>)}</div></div></button>
-    <div className="flex items-center justify-between gap-3 md:justify-end"><div className="mr-2 text-right"><p className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{item.repetitions ? `${item.intervalDays} day interval` : 'New card'}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{formatDue(item.dueAt)}</p></div><button className="button-quiet" onClick={onEdit} data-testid={`button-edit-${item.id}`}><Pencil size={15} /> <span className="hidden sm:inline">Edit</span></button><button className="button-quiet text-[hsl(var(--destructive))]" onClick={onDelete} disabled={deleting} data-testid={`button-delete-${item.id}`}><Trash2 size={15} /></button></div>
+  const masteryPercent = item.repetitions ? Math.min(100, Math.round((item.intervalDays / 30) * 100)) : 4;
+  return <div className={`card-surface hover-lift flex flex-col overflow-hidden fade-in delay-${Math.min(index + 1, 4)}`} data-testid={`row-vocabulary-${item.id}`}>
+    <span className="block h-1.5 w-full" style={{ background: typeColors[item.type] }} />
+    <button type="button" className="flex flex-1 flex-col gap-3 p-5 text-left" onClick={onView} data-testid={`button-view-${item.id}`}>
+      <div className="flex items-start justify-between gap-2"><span className="tag" style={{ color: typeColors[item.type], background: `${typeColors[item.type]}18` }}>{typeLabels[item.type]}</span>{item.source === 'ai' && <span className="tag bg-[hsl(var(--accent)/.25)]"><Sparkles size={10} className="mr-1" /> enriched</span>}</div>
+      <div><h3 className="serif text-xl leading-tight">{item.term}</h3>{item.pronunciation && <p className="mono mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{item.pronunciation}</p>}</div>
+      <p className="line-clamp-2 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{item.meaning}</p>
+      {item.tags.length > 0 && <div className="flex flex-wrap gap-1">{item.tags.slice(0, 3).map(tag => <span key={tag} className="mono text-[9px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]">#{tag}</span>)}</div>}
+    </button>
+    <div className="mt-auto border-t border-[hsl(var(--border))] p-4">
+      <div className="mb-3"><div className="mb-1.5 flex items-center justify-between text-[10px] text-[hsl(var(--muted-foreground))]"><span>{item.repetitions ? `${item.intervalDays}d interval` : 'New card'}</span><span>{formatDue(item.dueAt)}</span></div><div className="bar-track h-1.5"><div className="bar-fill" style={{ width: `${masteryPercent}%`, background: typeColors[item.type] }} /></div></div>
+      <div className="flex items-center justify-end gap-1"><button className="button-quiet" onClick={onEdit} data-testid={`button-edit-${item.id}`}><Pencil size={14} /> Edit</button><button className="button-quiet text-[hsl(var(--destructive))]" onClick={onDelete} disabled={deleting} data-testid={`button-delete-${item.id}`}><Trash2 size={14} /></button></div>
+    </div>
   </div>;
 }
 
@@ -752,7 +779,7 @@ function Review() {
     if (!card || (mode !== 'choice' && mode !== 'match')) return [];
     return Array.from(new Set([card.meaning, ...sessionCards.filter(item => item.id !== card.id).map(item => item.meaning)])).slice(0, 4).sort((a, b) => a.localeCompare(b));
   }, [card, mode, sessionCards]);
-  const ratingCopy: Record<string, { label: string; hint: string }> = { again: { label: 'Again', hint: 'Reset the thread' }, hard: { label: 'Hard', hint: 'A little more practice' }, good: { label: 'Good', hint: 'Keep this interval' }, easy: { label: 'Easy', hint: 'You have this one' } };
+  const ratingCopy: Record<string, { label: string; hint: string; color: string }> = { again: { label: 'Again', hint: 'Reset the thread', color: 'hsl(var(--destructive))' }, hard: { label: 'Hard', hint: 'A little more practice', color: 'hsl(var(--accent))' }, good: { label: 'Good', hint: 'Keep this interval', color: 'hsl(var(--primary))' }, easy: { label: 'Easy', hint: 'You have this one', color: '#1F9D64' } };
 
   useEffect(() => {
     setAnswer('');
@@ -822,8 +849,9 @@ function Review() {
     </div> : !card ? <div className="mx-auto max-w-2xl text-center">
       <div className="card-surface p-8"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[hsl(var(--secondary))] text-[hsl(var(--primary))]"><Check size={25} /></span><p className="serif mt-5 text-3xl">Session complete.</p><p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">You practiced {sessionCards.length} {sessionCards.length === 1 ? 'word' : 'words'}. Come back later when the next interval is due.</p><button className="button-primary mt-6" onClick={() => setSessionStarted(false)} data-testid="button-new-practice"><RotateCcw size={15} /> Practice again</button></div>
     </div> : <div className="mx-auto max-w-2xl fade-in">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><span className="eyebrow">Card {cardIndex + 1} of {sessionCards.length}</span><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{practiceModes.find(option => option.value === mode)?.label}</p></div><button className="button-quiet" onClick={() => setSessionStarted(false)} data-testid="button-change-practice">Change session</button></div>
-      <div className={`card-surface relative overflow-hidden p-6 transition md:p-7 ${answered ? 'border-[hsl(var(--primary)/.35)]' : ''}`}><div className="absolute left-0 top-0 h-1 w-full bg-[hsl(var(--accent))]" /><div className="flex items-center justify-between gap-3"><span className="tag" style={{ color: typeColors[card.type], background: `${typeColors[card.type]}18` }}>{typeLabels[card.type]}</span><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{formatDue(card.dueAt)}</span></div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><span className="eyebrow">Card {cardIndex + 1} of {sessionCards.length}</span><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{practiceModes.find(option => option.value === mode)?.label}</p></div><button className="button-quiet" onClick={() => setSessionStarted(false)} data-testid="button-change-practice">Change session</button></div>
+      <div className="bar-track mb-5"><div className="bar-fill" style={{ width: `${Math.round((cardIndex / sessionCards.length) * 100)}%` }} /></div>
+      <div className={`card-surface relative overflow-hidden p-6 transition md:p-7 ${answered ? 'border-[hsl(var(--primary)/.35)]' : ''}`}><div className="absolute left-0 top-0 h-1.5 w-full" style={{ background: typeColors[card.type] }} /><div className="flex items-center justify-between gap-3"><span className="tag" style={{ color: typeColors[card.type], background: `${typeColors[card.type]}18` }}>{typeLabels[card.type]}</span><span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{formatDue(card.dueAt)}</span></div>
         {mode === 'word' || mode === 'spelling' ? <div className="mt-10 text-center"><p className="eyebrow">Clue</p><p className="serif mt-4 text-2xl leading-snug">{card.meaning}</p></div> : mode === 'retrieval' ? <div className="mt-10 text-center"><p className="eyebrow">Your question{questionCount > 1 ? ` (${questionIndex % questionCount + 1} of ${questionCount})` : ''}</p><div className="mt-4 flex items-center justify-center gap-3">{questionCount > 1 && <button type="button" className="button-quiet" onClick={showPrevQuestion} aria-label="Previous question" data-testid="button-prev-retrieval-question"><ChevronLeft size={18} /></button>}<p className="serif max-w-md text-2xl leading-snug" data-testid="text-review-retrieval-question">{activeQuestion || 'No recall questions saved for this word yet.'}</p>{questionCount > 1 && <button type="button" className="button-quiet" onClick={showNextQuestion} aria-label="Next question" data-testid="button-next-retrieval-question"><ChevronRight size={18} /></button>}</div></div> : <div className="mt-10 text-center"><h2 className="serif text-[clamp(40px,8vw,70px)] leading-none tracking-[-.045em]" data-testid="text-review-term">{card.term}</h2>{card.pronunciation && <p className="mono mt-4 text-xs text-[hsl(var(--muted-foreground))]">{card.pronunciation}</p>}</div>}
         {!answered ? <div className="mx-auto mt-9 max-w-lg border-t border-[hsl(var(--border))] pt-7">
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{getReviewPrompt(mode, card)}</p>
@@ -835,7 +863,7 @@ function Review() {
           <ReviewAnswerDetails card={card} />
         </div>}
       </div>
-      {answered && <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">{(Object.keys(ratingCopy) as ReviewRatingType[]).map(rating => <button className="review-option" key={rating} onClick={() => rate(rating)} disabled={submit.isPending} data-testid={`button-rate-${rating}`}><span className="block text-sm font-bold">{ratingCopy[rating].label}</span><span className="mt-1 block text-[10px] leading-tight text-[hsl(var(--muted-foreground))]">{ratingCopy[rating].hint}</span></button>)}</div>}
+      {answered && <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">{(Object.keys(ratingCopy) as ReviewRatingType[]).map(rating => <button className="review-option" style={{ borderTopWidth: 3, borderTopColor: ratingCopy[rating].color }} key={rating} onClick={() => rate(rating)} disabled={submit.isPending} data-testid={`button-rate-${rating}`}><span className="block text-sm font-bold" style={{ color: ratingCopy[rating].color }}>{ratingCopy[rating].label}</span><span className="mt-1 block text-[10px] leading-tight text-[hsl(var(--muted-foreground))]">{ratingCopy[rating].hint}</span></button>)}</div>}
       {saveError && <p className="mt-5 flex items-center justify-center gap-2 text-xs text-[hsl(var(--destructive))]" data-testid="status-review-error"><CircleAlert size={14} /> {saveError}</p>}
       {lastRating && submit.isPending && <p className="mt-5 text-center text-xs text-[hsl(var(--muted-foreground))]" data-testid="status-review-saving"><Loader2 size={13} className="mr-1 inline animate-spin" /> Saving your rhythm...</p>}
     </div>}
