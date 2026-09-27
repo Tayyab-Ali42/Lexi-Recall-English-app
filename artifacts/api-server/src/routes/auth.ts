@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
-import { count, eq, isNull } from "drizzle-orm";
-import { db, usersTable, vocabularyTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { db, usersTable } from "@workspace/db";
 import { z } from "zod";
 import { clearSessionCookie, requireAuth, setSessionCookie } from "../lib/auth";
 
@@ -27,18 +27,12 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     return;
   }
 
-  const [{ value: userCount }] = await db.select({ value: count() }).from(usersTable);
   const passwordHash = await bcrypt.hash(password, 10);
   const id = randomUUID();
   const [user] = await db.insert(usersTable).values({ id, email, passwordHash }).returning();
   if (!user) {
     res.status(500).json({ error: "Could not create account." });
     return;
-  }
-
-  if (userCount === 0) {
-    // First account on this instance claims any pre-existing, unowned vocabulary.
-    await db.update(vocabularyTable).set({ userId: id }).where(isNull(vocabularyTable.userId));
   }
 
   setSessionCookie(res, user.id);
