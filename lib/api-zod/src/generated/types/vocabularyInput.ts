@@ -26,6 +26,8 @@ export interface VocabularyInput {
   urduMeaning?: string | null;
   /** @nullable */
   notes?: string | null;
+  commonStructures?: string | null;
+  relatedExpressions?: string | null;
   tags?: string[];
   retrievalQuestions?: string[];
   source?: VocabularyInputSource;

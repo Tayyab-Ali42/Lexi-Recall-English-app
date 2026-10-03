@@ -25,6 +25,8 @@ export interface VocabularyUpdate {
   urduMeaning?: string | null;
   /** @nullable */
   notes?: string | null;
+  commonStructures?: string | null;
+  relatedExpressions?: string | null;
   tags?: string[];
   retrievalQuestions?: string[];
 }

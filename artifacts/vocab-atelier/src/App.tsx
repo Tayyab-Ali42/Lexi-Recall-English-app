@@ -18,6 +18,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Rows,
   Search,
   Sparkles,
   Tag,
@@ -62,10 +63,12 @@ type FormState = {
   translation: string;
   urduMeaning: string;
   notes: string;
+  commonStructures: string;
+  relatedExpressions: string;
   tags: string;
   retrievalQuestions: string[];
 };
-const blankForm: FormState = { term: '', type: 'word', meaning: '', partOfSpeech: '', pronunciation: '', example: '', translation: '', urduMeaning: '', notes: '', tags: '', retrievalQuestions: [''] };
+const blankForm: FormState = { term: '', type: 'word', meaning: '', partOfSpeech: '', pronunciation: '', example: '', translation: '', urduMeaning: '', notes: '', commonStructures: '', relatedExpressions: '', tags: '', retrievalQuestions: [''] };
 
 const typeLabels: Record<string, string> = { word: 'Word', phrase: 'Phrase', idiom: 'Idiom', phrasal_verb: 'Phrasal verb' };
 const typeColors: Record<string, string> = { word: '#2B5FE2', phrase: '#1F9D64', idiom: '#7C5CFC', phrasal_verb: '#0EA5A0' };
@@ -439,11 +442,86 @@ function VocabularyDetailModal({ item, onClose, onEdit }: { item: VocabularyItem
       {item.translation && <div><p className="eyebrow mb-1">Translation</p><p className="text-sm leading-relaxed">{item.translation}</p></div>}
       <div><p className="eyebrow mb-1">In context</p><p className="text-sm italic leading-relaxed text-[hsl(var(--muted-foreground))]">“{item.example}”</p></div>
       {item.retrievalQuestions?.length > 0 && <div><p className="eyebrow mb-1">Recall questions</p><ul className="space-y-1.5">{item.retrievalQuestions.map((question, index) => <li key={index} className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{question}</li>)}</ul></div>}
+      {item.commonStructures && <div><p className="eyebrow mb-1">Common structures</p><p className="whitespace-pre-wrap text-sm leading-relaxed">{item.commonStructures}</p></div>}
+      {item.relatedExpressions && <div><p className="eyebrow mb-1">Related expressions</p><p className="whitespace-pre-wrap text-sm leading-relaxed">{item.relatedExpressions}</p></div>}
       {item.notes && <div><p className="eyebrow mb-1">Notes</p><p className="text-sm leading-relaxed">{item.notes}</p></div>}
       {item.tags.length > 0 && <div className="flex flex-wrap gap-1.5">{item.tags.map(tag => <span key={tag} className="tag">#{tag}</span>)}</div>}
       <div className="flex flex-wrap gap-4 border-t border-[hsl(var(--border))] pt-4 text-xs text-[hsl(var(--muted-foreground))]"><span>{item.repetitions ? `${item.intervalDays} day interval` : 'New card'}</span><span>{formatDue(item.dueAt)}</span></div>
     </div>
     <div className="mt-7 flex justify-end gap-2"><button className="button-secondary" onClick={onClose} data-testid="button-close-detail-secondary">Close</button><button className="button-primary" onClick={onEdit} data-testid="button-edit-from-detail"><Pencil size={15} /> Edit</button></div>
+  </div></div>;
+}
+
+type BulkRow = { id: string; term: string; type: VocabularyType; meaning: string; urduMeaning: string; example: string };
+const blankBulkRow = (): BulkRow => ({ id: Math.random().toString(36).slice(2), term: '', type: 'word', meaning: '', urduMeaning: '', example: '' });
+
+function BulkAddModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const create = useCreateVocabulary();
+  const [rows, setRows] = useState<BulkRow[]>(() => [blankBulkRow(), blankBulkRow(), blankBulkRow()]);
+  const [invalidIds, setInvalidIds] = useState<Set<string>>(new Set());
+  const [stage, setStage] = useState<'editing' | 'saving' | 'done'>('editing');
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [results, setResults] = useState({ added: 0, failed: [] as string[] });
+
+  const updateRow = (id: string, key: keyof BulkRow, value: string) => setRows(prev => prev.map(row => row.id === id ? { ...row, [key]: value } : row));
+  const addRow = () => setRows(prev => [...prev, blankBulkRow()]);
+  const removeRow = (id: string) => setRows(prev => prev.length > 1 ? prev.filter(row => row.id !== id) : prev);
+
+  const saveAll = async () => {
+    const started = rows.filter(row => row.term.trim() || row.meaning.trim() || row.example.trim());
+    const invalid = new Set(started.filter(row => !row.term.trim() || !row.meaning.trim() || !row.example.trim()).map(row => row.id));
+    if (invalid.size > 0) { setInvalidIds(invalid); return; }
+    const valid = started.filter(row => row.term.trim());
+    if (!valid.length) return;
+    setInvalidIds(new Set());
+    setStage('saving');
+    setProgress({ done: 0, total: valid.length });
+    let added = 0;
+    const failed: string[] = [];
+    for (const row of valid) {
+      try {
+        await create.mutateAsync({ data: { term: row.term.trim(), type: row.type, meaning: row.meaning.trim(), example: row.example.trim(), urduMeaning: row.urduMeaning.trim() || null, tags: [], retrievalQuestions: [], source: 'manual' } });
+        added += 1;
+      } catch {
+        failed.push(row.term.trim());
+      }
+      setProgress(prev => ({ ...prev, done: prev.done + 1 }));
+    }
+    qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    setResults({ added, failed });
+    setStage('done');
+    if (added) showToast(`${added} word${added === 1 ? '' : 's'} saved.`);
+  };
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && stage !== 'saving') onClose(); }}><div className="modal max-w-2xl" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title" data-testid="dialog-bulk-add">
+    <div className="mb-6 flex items-start justify-between"><div><p className="eyebrow mb-2">Faster shelving</p><h2 id="bulk-modal-title" className="serif text-3xl">Save several at once.</h2></div>{stage !== 'saving' && <button className="button-quiet" onClick={onClose} data-testid="button-close-bulk-add"><X size={18} /></button>}</div>
+
+    {stage === 'editing' && <div>
+      <p className="mb-4 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Fill in term, meaning, and an example for each word. Add more rows as needed, then save them all together. You can always add tags, recall questions, or structures later by editing the word.</p>
+      <div className="max-h-[50vh] space-y-3 overflow-auto pr-1">{rows.map((row, index) => <div key={row.id} className={`rounded-2xl border p-4 ${invalidIds.has(row.id) ? 'border-[hsl(var(--destructive))]' : 'border-[hsl(var(--border))]'}`} data-testid={`row-bulk-${index}`}>
+        <div className="flex items-center justify-between"><span className="eyebrow">Word {index + 1}</span><button type="button" className="button-quiet" onClick={() => removeRow(row.id)} disabled={rows.length === 1} aria-label="Remove row" data-testid={`button-remove-bulk-row-${index}`}><Trash2 size={14} /></button></div>
+        <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+          <input className="field" value={row.term} onChange={e => updateRow(row.id, 'term', e.target.value)} placeholder="Term" data-testid={`input-bulk-term-${index}`} />
+          <select className="field" value={row.type} onChange={e => updateRow(row.id, 'type', e.target.value)} data-testid={`select-bulk-type-${index}`}>{types.map(type => <option key={type} value={type}>{typeLabels[type]}</option>)}</select>
+          <input className="field sm:col-span-2" value={row.meaning} onChange={e => updateRow(row.id, 'meaning', e.target.value)} placeholder="Meaning" data-testid={`input-bulk-meaning-${index}`} />
+          <input className="field sm:col-span-2" value={row.example} onChange={e => updateRow(row.id, 'example', e.target.value)} placeholder="Example sentence" data-testid={`input-bulk-example-${index}`} />
+          <input className="field sm:col-span-2" value={row.urduMeaning} onChange={e => updateRow(row.id, 'urduMeaning', e.target.value)} placeholder="Urdu meaning (optional)" data-testid={`input-bulk-urdu-${index}`} />
+        </div>
+      </div>)}</div>
+      <button type="button" className="button-secondary mt-3" onClick={addRow} data-testid="button-add-bulk-row"><Plus size={14} /> Add another word</button>
+      {invalidIds.size > 0 && <p className="mt-3 text-xs text-[hsl(var(--destructive))]" data-testid="status-bulk-invalid">Rows marked in red need a term, meaning, and example before saving.</p>}
+      <div className="mt-6 flex justify-end gap-2"><button className="button-secondary" onClick={onClose} data-testid="button-cancel-bulk-add">Cancel</button><button className="button-primary" onClick={saveAll} data-testid="button-save-bulk-add">Save all</button></div>
+    </div>}
+
+    {stage === 'saving' && <div className="py-10 text-center"><Loader2 size={22} className="mx-auto animate-spin text-[hsl(var(--primary))]" /><p className="mt-4 text-sm text-[hsl(var(--muted-foreground))]" data-testid="status-bulk-progress">Saving {progress.done} of {progress.total}...</p></div>}
+
+    {stage === 'done' && <div className="py-4 text-center">
+      <p className="serif text-2xl">{results.added} word{results.added === 1 ? '' : 's'} saved.</p>
+      {results.failed.length > 0 && <p className="mt-3 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Could not save: {results.failed.join(', ')}</p>}
+      <button className="button-primary mt-7" onClick={onClose} data-testid="button-finish-bulk-add">Done</button>
+    </div>}
   </div></div>;
 }
 
@@ -554,6 +632,7 @@ function Library() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [bulkAdding, setBulkAdding] = useState(false);
   const params = useMemo(() => ({ search: search || undefined, type: filter === 'all' ? undefined : filter }), [search, filter]);
   const list = useListVocabulary(params);
   const exportList = useListVocabulary();
@@ -568,7 +647,7 @@ function Library() {
     window.print();
   };
   return <div className="content-wrap">
-    <PageHeader eyebrow="The collection" title="Your language, gathered." description="A living shelf of words, phrases, idioms, and verbs you decided were worth keeping." action={<div className="flex flex-wrap justify-end gap-2"><button className="button-secondary" onClick={() => setImporting(true)} data-testid="button-import-vocabulary"><Upload size={16} /> Import</button><button className="button-secondary" onClick={exportWords} disabled={exportList.isLoading || exportList.isError || !exportList.data?.length} data-testid="button-export-vocabulary"><FileDown size={16} /> {exportList.isLoading ? 'Preparing...' : 'Export PDF'}</button><button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-vocabulary"><Plus size={16} /> Add vocabulary</button></div>} />
+    <PageHeader eyebrow="The collection" title="Your language, gathered." description="A living shelf of words, phrases, idioms, and verbs you decided were worth keeping." action={<div className="flex flex-wrap justify-end gap-2"><button className="button-secondary" onClick={() => setBulkAdding(true)} data-testid="button-bulk-add-vocabulary"><Rows size={16} /> Bulk add</button><button className="button-secondary" onClick={() => setImporting(true)} data-testid="button-import-vocabulary"><Upload size={16} /> Import</button><button className="button-secondary" onClick={exportWords} disabled={exportList.isLoading || exportList.isError || !exportList.data?.length} data-testid="button-export-vocabulary"><FileDown size={16} /> {exportList.isLoading ? 'Preparing...' : 'Export PDF'}</button><button className="button-primary" onClick={() => setEditingId('new')} data-testid="button-add-vocabulary"><Plus size={16} /> Add vocabulary</button></div>} />
     <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between fade-in delay-1">
       <div className="relative w-full md:max-w-sm"><Search size={16} className="absolute left-3.5 top-3.5 text-[hsl(var(--muted-foreground))]" /><input className="field pl-10" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your shelf..." data-testid="input-search-vocabulary" /></div>
       <div className="flex gap-1.5 overflow-auto pb-1">{(['all', ...types] as const).map((type) => <button key={type} onClick={() => setFilter(type)} className={`rounded-full px-3.5 py-2 text-xs font-semibold transition ${filter === type ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'}`} data-testid={`button-filter-${type}`}>{type === 'all' ? 'All words' : typeLabels[type]}</button>)}</div>
@@ -582,6 +661,7 @@ function Library() {
     {editingId && <VocabularyModal editingId={editingId === 'new' ? null : editingId} onClose={() => setEditingId(null)} />}
     {viewingId && (() => { const item = allItems.find(entry => entry.id === viewingId); return item ? <VocabularyDetailModal item={item} onClose={() => setViewingId(null)} onEdit={() => { setViewingId(null); setEditingId(item.id); }} /> : null; })()}
     {importing && <ImportModal onClose={() => setImporting(false)} />}
+    {bulkAdding && <BulkAddModal onClose={() => setBulkAdding(false)} />}
   </div>;
 }
 
@@ -641,7 +721,7 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
   const enrich = useEnrichVocabulary();
   useEffect(() => {
     const item = itemQuery.data;
-     if (item) setForm({ term: item.term, type: item.type, meaning: item.meaning, partOfSpeech: item.partOfSpeech ?? '', pronunciation: item.pronunciation ?? '', example: item.example, translation: item.translation ?? '', urduMeaning: item.urduMeaning ?? '', notes: item.notes ?? '', tags: item.tags.join(', '), retrievalQuestions: item.retrievalQuestions?.length ? item.retrievalQuestions : [''] });
+     if (item) setForm({ term: item.term, type: item.type, meaning: item.meaning, partOfSpeech: item.partOfSpeech ?? '', pronunciation: item.pronunciation ?? '', example: item.example, translation: item.translation ?? '', urduMeaning: item.urduMeaning ?? '', notes: item.notes ?? '', commonStructures: item.commonStructures ?? '', relatedExpressions: item.relatedExpressions ?? '', tags: item.tags.join(', '), retrievalQuestions: item.retrievalQuestions?.length ? item.retrievalQuestions : [''] });
   }, [itemQuery.data]);
   const set = (key: keyof Omit<FormState, 'retrievalQuestions'>, value: string) => setForm(prev => ({ ...prev, [key]: value }));
   const setQuestion = (index: number, value: string) => setForm(prev => ({ ...prev, retrievalQuestions: prev.retrievalQuestions.map((question, questionIndex) => questionIndex === index ? value : question) }));
@@ -662,7 +742,7 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
     event.preventDefault();
     if (!form.term.trim() || !form.meaning.trim() || !form.example.trim()) { setSaveError('Term, meaning, and example are required.'); return; }
     setSaveError('');
-     const payload: VocabularyInput = { term: form.term.trim(), type: form.type as VocabularyType, meaning: form.meaning.trim(), partOfSpeech: form.partOfSpeech.trim() || null, pronunciation: form.pronunciation.trim() || null, example: form.example.trim(), translation: form.translation.trim() || null, urduMeaning: form.urduMeaning.trim() || null, notes: form.notes.trim() || null, tags: form.tags.split(',').map(tag => tag.trim()).filter(Boolean), retrievalQuestions: form.retrievalQuestions.map(question => question.trim()).filter(Boolean), source: enrich.data ? 'ai' : 'manual' };
+     const payload: VocabularyInput = { term: form.term.trim(), type: form.type as VocabularyType, meaning: form.meaning.trim(), partOfSpeech: form.partOfSpeech.trim() || null, pronunciation: form.pronunciation.trim() || null, example: form.example.trim(), translation: form.translation.trim() || null, urduMeaning: form.urduMeaning.trim() || null, notes: form.notes.trim() || null, commonStructures: form.commonStructures.trim() || null, relatedExpressions: form.relatedExpressions.trim() || null, tags: form.tags.split(',').map(tag => tag.trim()).filter(Boolean), retrievalQuestions: form.retrievalQuestions.map(question => question.trim()).filter(Boolean), source: enrich.data ? 'ai' : 'manual' };
     if (editingId) update.mutate({ id: editingId, data: payload }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); qc.invalidateQueries({ queryKey: getGetVocabularyQueryKey(editingId) }); showToast(`"${payload.term}" updated.`); onClose(); }, onError: () => setSaveError('That edit could not be saved. Try again.') });
     else create.mutate({ data: payload }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListVocabularyQueryKey() }); qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); showToast(`"${payload.term}" saved.`); onClose(); }, onError: () => setSaveError('That word could not be saved. Try again.') });
   };
@@ -678,6 +758,8 @@ function VocabularyModal({ editingId, onClose }: { editingId: string | null; onC
       <div><label className="field-label" htmlFor="vocab-example">Example sentence</label><textarea id="vocab-example" className="field min-h-[80px] resize-y" value={form.example} onChange={e => set('example', e.target.value)} placeholder="Put it in a sentence you might actually say." data-testid="input-vocabulary-example" /></div>
        <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="vocab-translation">Translation</label><input id="vocab-translation" className="field" value={form.translation} onChange={e => set('translation', e.target.value)} placeholder="Optional" data-testid="input-vocabulary-translation" /></div><div><label className="field-label" htmlFor="vocab-tags">Tags</label><input id="vocab-tags" className="field" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="travel, work, curious" data-testid="input-vocabulary-tags" /></div></div>
       <div><div className="flex items-center justify-between"><label className="field-label">Recall questions</label><span className="text-[10px] text-[hsl(var(--muted-foreground))]">2-3 scenario clues, no giveaways</span></div><div className="mt-1 space-y-2">{form.retrievalQuestions.map((question, index) => <div className="flex gap-2" key={index}><input className="field flex-1" value={question} onChange={e => setQuestion(index, e.target.value)} placeholder="Describe a situation where this word applies, without naming it" data-testid={`input-retrieval-question-${index}`} /><button type="button" className="button-secondary shrink-0 px-3" onClick={() => removeQuestion(index)} aria-label="Remove question" data-testid={`button-remove-retrieval-question-${index}`}><Trash2 size={14} /></button></div>)}</div><button type="button" className="button-quiet mt-2" onClick={addQuestion} data-testid="button-add-retrieval-question"><Plus size={14} /> Add a question</button></div>
+      <div><label className="field-label" htmlFor="vocab-structures">Common structures</label><textarea id="vocab-structures" className="field min-h-[90px] resize-y" value={form.commonStructures} onChange={e => set('commonStructures', e.target.value)} placeholder="Paste patterns + examples, e.g. &quot;Something + catch on (become popular) — I hope this product catches on.&quot;" data-testid="input-vocabulary-common-structures" /></div>
+      <div><label className="field-label" htmlFor="vocab-related">Related expressions</label><textarea id="vocab-related" className="field min-h-[80px] resize-y" value={form.relatedExpressions} onChange={e => set('relatedExpressions', e.target.value)} placeholder="Paste a related word/phrase with its meaning and an example, e.g. &quot;Take off = become suddenly successful...&quot;" data-testid="input-vocabulary-related-expressions" /></div>
       <div><label className="field-label" htmlFor="vocab-notes">Private notes</label><textarea id="vocab-notes" className="field min-h-[65px] resize-y" value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="A memory, a nuance, a connection..." data-testid="input-vocabulary-notes" /></div>
       {saveError && <p className="flex items-center gap-2 text-xs text-[hsl(var(--destructive))]" data-testid="status-save-error"><CircleAlert size={14} /> {saveError}</p>}
       <div className="flex justify-end gap-2 border-t border-[hsl(var(--border))] pt-5"><button type="button" className="button-secondary" onClick={onClose} data-testid="button-cancel-vocabulary">Cancel</button><button type="submit" className="button-primary" disabled={busy} data-testid="button-save-vocabulary">{busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {busy ? 'Saving...' : isNew ? 'Save word' : 'Save changes'}</button></div>

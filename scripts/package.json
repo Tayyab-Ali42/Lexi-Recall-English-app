@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "claim-vocabulary": "tsx ./src/claim-vocabulary.ts",
     "reset-password": "tsx ./src/reset-password.ts",
+    "seed-vocabulary": "tsx ./src/seed-vocabulary.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -252,6 +252,10 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
+        commonStructures:
+          type: ["string", "null"]
+        relatedExpressions:
+          type: ["string", "null"]
         tags:
           type: array
           items:
@@ -303,6 +307,10 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
+        commonStructures:
+          type: ["string", "null"]
+        relatedExpressions:
+          type: ["string", "null"]
         tags:
           type: array
           items:
@@ -338,6 +346,10 @@ components:
         urduMeaning:
           type: ["string", "null"]
         notes:
+          type: ["string", "null"]
+        commonStructures:
+          type: ["string", "null"]
+        relatedExpressions:
           type: ["string", "null"]
         tags:
           type: array

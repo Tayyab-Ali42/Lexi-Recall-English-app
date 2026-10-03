@@ -23,6 +23,8 @@ export const vocabularyTable = pgTable("vocabulary", {
   notes: text("notes"),
   tags: text("tags").array().notNull().default([]),
   retrievalQuestions: text("retrieval_questions").array().notNull().default([]),
+  commonStructures: text("common_structures"),
+  relatedExpressions: text("related_expressions"),
   intervalDays: doublePrecision("interval_days").notNull().default(0),
   easeFactor: doublePrecision("ease_factor").notNull().default(2.5),
   repetitions: integer("repetitions").notNull().default(0),
